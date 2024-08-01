@@ -23,7 +23,7 @@ public:
     bool isLeaf() const;
 
     // Get the order of the node
-    int getOrder();
+    size_t getOrder();
 
     // Get the covered halfspaces
     std::vector<Halfspace> getCovered();
@@ -44,7 +44,7 @@ public:
 private:
     std::vector<std::array<double, 2>> mbr;  // Minimum bounding region
     bool norm;  // Normalization flag
-    int order;  // Order of the node
+    size_t order;  // Order of the node
     QNode* parent;  // Parent node
     std::vector<std::unique_ptr<QNode>> children;  // Children nodes
     std::vector<Halfspace> covered;  // Covered halfspaces

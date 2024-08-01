@@ -23,7 +23,7 @@ bool QNode::isLeaf() const {
 }
 
 // Computes the order of the node by traversing back up the tree.
-int QNode::getOrder() {
+size_t QNode::getOrder() {
     order = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
     QNode* ref = parent;
 
@@ -90,7 +90,7 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
 
     // Distribute halfspaces to children nodes based on their positions.
     for (size_t hs = 0; hs < halfspaces.size(); ++hs) {
-        std::vector<int> rel;  // Relative positions where the points' positions differ.
+        std::vector<size_t> rel;;  // Relative positions where the points' positions differ.
         for (size_t i = 0; i < pos.size(); ++i) {
             if (pos[i][hs] != pos[0][hs]) {
                 rel.push_back(i);
@@ -98,7 +98,7 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
         }
 
         // Determine which children nodes the halfspace crosses.
-        std::vector<int> cross;
+        std::vector<size_t> cross;
         for (size_t j = 0; j < ndsMask.size(); ++j) {
             bool crosses = false;
             for (const auto& r : rel) {
@@ -119,7 +119,7 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
 
         // Add halfspace to covered list of appropriate children nodes if not crossing.
         if (pos[0][hs] == Position::IN) {
-            std::vector<int> notCross;
+            std::vector<size_t> notCross;
             for (size_t j = 0; j < ndsMask.size(); ++j) {
                 bool crosses = false;
                 for (const auto& r : rel) {
