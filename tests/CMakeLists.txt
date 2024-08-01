@@ -15,6 +15,6 @@ FetchContent_MakeAvailable(googletest)
 
 # Now simply link against gtest or gtest_main as needed. Eg
 add_executable(test_qtree test_qtree.cpp)
-target_link_libraries(test_qtree gtest_main)
+target_link_libraries(test_qtree gtest_main qtree_lib)
 include(GoogleTest)
 gtest_discover_tests(test_qtree)
