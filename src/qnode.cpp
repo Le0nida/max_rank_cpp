@@ -23,9 +23,9 @@ bool QNode::isLeaf() const {
 }
 
 // Computes the order of the node by traversing back up the tree.
-size_t QNode::getOrder() {
+size_t QNode::getOrder() const{
     order = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
-    QNode* ref = parent;
+    const QNode* ref = parent;
 
     // Traverse back up the tree to accumulate the order from parent nodes.
     while (ref && !ref->isRoot()) {
@@ -37,9 +37,9 @@ size_t QNode::getOrder() {
 }
 
 // Retrieves the covering halfspaces by traversing back up the tree.
-std::vector<Halfspace> QNode::getCovered() {
+std::vector<Halfspace> QNode::getCovered() const{
     std::vector<Halfspace> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
-    QNode* ref = parent;
+    const QNode* ref = parent;
 
     // Traverse back up the tree to accumulate the covered halfspaces from parent nodes.
     while (ref && !ref->isRoot()) {
