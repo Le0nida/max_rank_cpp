@@ -3,57 +3,68 @@
 //
 
 #include "qtree.h"
+#include "qnode.h"
 #include "halfspace.h"
-#include <iostream>
+#include "geom.h"
+#include <vector>
+#include <array>
 #include <numeric>
-#include <bitset>
 
-QTree::QTree(int dims, int maxhsnode)
-    : dims(dims), maxhsnode(maxhsnode), masks(genMasks(dims)) {
-    root = createRoot();
+// Constructor for QTree
+QTree::QTree(int dims, int maxhsnode) : dims(dims), maxhsnode(maxhsnode) {
+    masks = genMasks(dims);
+    root = createroot();
 }
 
-std::unique_ptr<QNode> QTree::createRoot() {
+// Create the root node and split it
+QNode* QTree::createroot() {
     std::vector<std::array<double, 2>> mbr(dims, {0.0, 1.0});
-    auto root = std::make_unique<QNode>(nullptr, mbr);
-    splitNode(root.get());
+    auto* root = new QNode(nullptr, mbr);
+    splitnode(root);
     return root;
 }
 
-void QTree::splitNode(QNode* node) {
+// Split the given node
+void QTree::splitnode(QNode* node) {
     const auto& mbr = node->getMBR();
-    const auto& mindim = mbr[0];
-    const auto& maxdim = mbr[1];
+    std::vector<double> mindim(dims);
+    std::vector<double> maxdim(dims);
+
+    for (int i = 0; i < dims; ++i) {
+        mindim[i] = mbr[i][0];
+        maxdim[i] = mbr[i][1];
+    }
 
     for (int quad = 0; quad < (1 << dims); ++quad) {
-        std::bitset<32> qbin(quad); // Assuming dims <= 32
+        std::vector<double> child_mindim(dims);
+        std::vector<double> child_maxdim(dims);
 
-        std::array<double, 2> child_mindim;
-        std::array<double, 2> child_maxdim;
-
-        for (size_t i = 0; i < mindim.size(); ++i) {
-            if (qbin[i] == 0) {
-                child_mindim[i] = mindim[i];
-                child_maxdim[i] = (mindim[i] + maxdim[i]) / 2;
-            } else {
+        for (int i = 0; i < dims; ++i) {
+            if (quad & (1 << i)) {
                 child_mindim[i] = (mindim[i] + maxdim[i]) / 2;
                 child_maxdim[i] = maxdim[i];
+            } else {
+                child_mindim[i] = mindim[i];
+                child_maxdim[i] = (mindim[i] + maxdim[i]) / 2;
             }
         }
 
-        std::vector<std::array<double, 2>> child_mbr = {child_mindim, child_maxdim};
-        auto child = std::make_unique<QNode>(node, child_mbr);
-
-        if (std::accumulate(child_mindim.begin(), child_mindim.end(), 0.0) >= 1) {
-            child->setNorm(false);
+        std::vector<std::array<double, 2>> child_mbr(dims);
+        for (int i = 0; i < dims; ++i) {
+            child_mbr[i] = {child_mindim[i], child_maxdim[i]};
         }
 
+        auto child = std::make_unique<QNode>(node, child_mbr);
+        if (std::accumulate(child_mindim.begin(), child_mindim.end(), 0.0) >= 1.0) {
+            child->setNorm(false);
+        }
         node->addChild(std::move(child));
     }
 }
 
-void QTree::insertHalfspaces(const std::vector<Halfspace>& halfspaces) {
-    std::vector<QNode*> to_search = {root.get()};
+// Insert halfspaces into the tree
+void QTree::inserthalfspaces(const std::vector<Halfspace>& halfspaces) {
+    std::vector<QNode*> to_search = {root};
     root->setHalfspaces(halfspaces);
 
     while (!to_search.empty()) {
@@ -63,12 +74,12 @@ void QTree::insertHalfspaces(const std::vector<Halfspace>& halfspaces) {
         current->insertHalfspaces(masks, current->getHalfspaces());
         current->clearHalfspaces();
 
-        for (auto& child : current->getChildren()) {
+        for (const auto& child : current->getChildren()) {
             if (child->isNorm()) {
                 if (!child->isLeaf() && !child->getHalfspaces().empty()) {
                     to_search.push_back(child.get());
                 } else if (child->getHalfspaces().size() > maxhsnode) {
-                    splitNode(child.get());
+                    splitnode(child.get());
                     to_search.push_back(child.get());
                 }
             }
@@ -76,9 +87,10 @@ void QTree::insertHalfspaces(const std::vector<Halfspace>& halfspaces) {
     }
 }
 
-std::vector<QNode*> QTree::getLeaves() {
+// Retrieve all leaves of the QTree
+std::vector<QNode*> QTree::getleaves() {
     std::vector<QNode*> leaves;
-    std::vector<QNode*> to_search = {root.get()};
+    std::vector<QNode*> to_search = {root};
 
     while (!to_search.empty()) {
         QNode* current = to_search.back();
@@ -88,7 +100,7 @@ std::vector<QNode*> QTree::getLeaves() {
             if (current->isLeaf()) {
                 leaves.push_back(current);
             } else {
-                for (auto& child : current->getChildren()) {
+                for (const auto& child : current->getChildren()) {
                     to_search.push_back(child.get());
                 }
             }

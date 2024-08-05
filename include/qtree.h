@@ -5,28 +5,24 @@
 #ifndef QTREE_H
 #define QTREE_H
 
+#include "qnode.h"
 #include <vector>
 #include <array>
-#include <memory>
-#include "qnode.h"
-#include "geom.h"
 
 class QTree {
 public:
     QTree(int dims, int maxhsnode);
-    ~QTree() = default;
-
-    void insertHalfspaces(const std::vector<Halfspace>& halfspaces);
-    std::vector<QNode*> getLeaves();
+    void inserthalfspaces(const std::vector<Halfspace>& halfspaces);
+    std::vector<QNode*> getleaves();
 
 private:
-    int dims;
-    int maxhsnode;
-    std::array<std::vector<std::vector<double>>, 2> masks;
-    std::unique_ptr<QNode> root;
+    int dims;  // Dimensionality of the space wrapped by the tree
+    int maxhsnode;  // Maximum number of halfspaces a node can contain before being split up
+    std::array<std::vector<std::vector<double>>, 2> masks;  // Masks used in halfspace insertion
+    QNode* root;  // Reference to root node
 
-    std::unique_ptr<QNode> createRoot();
-    void splitNode(QNode* node);
+    QNode* createroot();
+    void splitnode(QNode* node);
 };
 
 #endif // QTREE_H
