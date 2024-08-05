@@ -3,23 +3,63 @@
 //
 
 #include "geom.h"
+#include <vector>
+#include <array>
+#include <numeric>
+#include <bitset>
+#include <iostream>
 
-std::array<std::vector<std::vector<double>>, 2> genMasks(int dims) {
-    std::array<std::vector<std::vector<double>>, 2> masks;
+std::array<std::vector<std::vector<double>>, 2> genmasks(int dims) {
+    std::vector<double> incr(dims, 0.5);
+    std::vector<std::vector<double>> pts(1, std::vector<double>(dims, 0.5));
 
-    //TODO
+    for (int d = 0; d < dims; ++d) {
+        std::vector<std::vector<double>> lower = pts;
+        std::vector<std::vector<double>> higher = pts;
+        for (auto& p : lower) p[d] -= incr[d];
+        for (auto& p : higher) p[d] += incr[d];
+        pts.insert(pts.end(), lower.begin(), lower.end());
+        pts.insert(pts.end(), higher.begin(), higher.end());
+    }
 
-    // Resize the vectors to hold the appropriate number of elements
-    masks[0].resize(9, std::vector<double>(dims)); // Point masks
-    masks[1].resize(9, std::vector<double>(dims)); // Node masks
-
-    // Example masks initialization
-    for (int i = 0; i < 9; ++i) {
-        for (int j = 0; j < dims; ++j) {
-            masks[0][i][j] = (i == j) ? 1.0 : 0.0; // Identity-like mask for points
-            masks[1][i][j] = (i % 2 == 0) ? 1.0 : 0.0; // Alternating mask for nodes
+    std::vector<std::vector<double>> pts_mask(pts.size(), std::vector<double>(dims));
+    for (size_t i = 0; i < pts.size(); ++i) {
+        for (int d = 0; d < dims; ++d) {
+            pts_mask[i][d] = (pts[i][d] - incr[d]) / incr[d];
         }
     }
 
-    return masks;
+    std::vector<std::array<std::array<double, 2>, dims>> mbr(1 << dims);
+    for (int quad = 0; quad < (1 << dims); ++quad) {
+        std::bitset<32> qbin(quad);
+        std::array<double, dims> child_mindim;
+        std::array<double, dims> child_maxdim;
+
+        for (int d = 0; d < dims; ++d) {
+            child_mindim[d] = qbin[d] ? 0.5 : 0.0;
+            child_maxdim[d] = qbin[d] ? 1.0 : 0.5;
+        }
+
+        for (int d = 0; d < dims; ++d) {
+            mbr[quad][d] = {child_mindim[d], child_maxdim[d]};
+        }
+    }
+
+    std::vector<std::vector<int>> nds_mask(pts.size(), std::vector<int>(1 << dims, 0));
+    for (size_t p = 0; p < pts.size(); ++p) {
+        for (int n = 0; n < (1 << dims); ++n) {
+            bool match = true;
+            for (int d = 0; d < dims; ++d) {
+                if (pts[p][d] != mbr[n][d][0] && pts[p][d] != mbr[n][d][1]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                nds_mask[p][n] = 1;
+            }
+        }
+    }
+
+    return {pts_mask, nds_mask};
 }
