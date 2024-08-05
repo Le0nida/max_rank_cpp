@@ -10,7 +10,7 @@
 
 // Constructor for QNode, initializes the member variables.
 QNode::QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr)
-    : mbr(mbr), norm(true), order(-1), parent(parent) {}
+    : mbr(mbr), norm(true), order(0), parent(parent) {}
 
 // Checks if the node is the root of the tree.
 bool QNode::isRoot() const {
@@ -23,18 +23,22 @@ bool QNode::isLeaf() const {
 }
 
 // Computes the order of the node by traversing back up the tree.
-size_t QNode::getOrder() const{
-    order = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
+size_t QNode::getOrder() const {
+    std::cout << "Calculating order for node: " << this << std::endl;
+    size_t localOrder = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
     const QNode* ref = parent;
 
     // Traverse back up the tree to accumulate the order from parent nodes.
-    while (ref && !ref->isRoot()) {
-        order += ref->covered.size();
+    while (ref) {
+        std::cout << "Parent node: " << ref << std::endl;
+        localOrder += ref->covered.size();
         ref = ref->parent;
     }
 
-    return order;
+    order = localOrder;
+    return localOrder;
 }
+
 
 // Retrieves the covering halfspaces by traversing back up the tree.
 std::vector<Halfspace> QNode::getCovered() const{
