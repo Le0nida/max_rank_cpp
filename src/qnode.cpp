@@ -10,7 +10,7 @@
 
 // Constructor for QNode, initializes the member variables.
 QNode::QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr)
-    : mbr(mbr), norm(true), order(0), parent(parent) {}
+    : mbr(mbr), norm(true), order(-1), parent(parent) {}
 
 // Checks if the node is the root of the tree.
 bool QNode::isRoot() const {
@@ -51,8 +51,7 @@ std::vector<Halfspace> QNode::getCovered() const{
 }
 
 // Inserts halfspaces into the node and distributes them to children nodes if necessary.
-void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2>>& masks, const std::vector<Halfspace>& halfspaces) {
-    // Calculate the increments and midpoints for the node's MBR.
+void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<Halfspace>& halfspaces) {
     std::vector<double> incr(mbr.size());
     std::vector<double> half(mbr.size());
 
@@ -61,16 +60,24 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
         half[i] = (mbr[i][0] + mbr[i][1]) / 2.0;
     }
 
+    if (masks.empty()) {
+        std::cout << "Masks are empty, exiting function." << std::endl;
+        return;
+    }
     const auto& ptsMask = masks[0];  // Point masks for halfspace insertion.
     const auto& ndsMask = masks[1];  // Node masks for halfspace insertion.
 
     // Calculate the points for the masks.
     std::vector<std::vector<double>> pts(ptsMask.size(), std::vector<double>(half.size()));
+
+    // Calculate pts
     for (size_t i = 0; i < ptsMask.size(); ++i) {
-        for (size_t j = 0; j < half.size(); ++j) {
+        for (size_t j = 0; j < mbr.size(); ++j) {
             pts[i][j] = incr[j] * ptsMask[i][j] + half[j];
         }
     }
+
+    std::cout << "Calculated pts values." << std::endl;
 
     // Extract coefficients and known values from halfspaces.
     std::vector<std::vector<double>> coeff;
@@ -80,6 +87,8 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
         known.push_back(hs.known);
     }
 
+    std::cout << "Extracted coefficients and known values." << std::endl;
+
     // Determine the position of points relative to each halfspace.
     std::vector<std::vector<int>> pos(pts.size(), std::vector<int>(halfspaces.size(), 0));
     for (size_t i = 0; i < pts.size(); ++i) {
@@ -88,9 +97,11 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
         }
     }
 
+    std::cout << "Determined positions of points relative to halfspaces." << std::endl;
+
     // Distribute halfspaces to children nodes based on their positions.
     for (size_t hs = 0; hs < halfspaces.size(); ++hs) {
-        std::vector<size_t> rel;;  // Relative positions where the points' positions differ.
+        std::vector<size_t> rel;  // Relative positions where the points' positions differ.
         for (size_t i = 0; i < pos.size(); ++i) {
             if (pos[i][hs] != pos[0][hs]) {
                 rel.push_back(i);
@@ -114,28 +125,38 @@ void QNode::insertHalfspaces(const std::vector<std::array<std::vector<double>, 2
 
         // Add halfspace to the appropriate children nodes.
         for (const auto& c : cross) {
-            children[c]->halfspaces.push_back(halfspaces[hs]);
+            if (c < children.size()) {
+                children[c]->halfspaces.push_back(halfspaces[hs]);
+            } else {
+                std::cerr << "Index out of bounds: " << c << " >= " << children.size() << std::endl;
+                return;
+            }
         }
 
         // Add halfspace to covered list of appropriate children nodes if not crossing.
         if (pos[0][hs] == Position::IN) {
-            std::vector<size_t> notCross;
-            for (size_t j = 0; j < ndsMask.size(); ++j) {
-                bool crosses = false;
-                for (const auto& r : rel) {
-                    if (ndsMask[r][j] > 0) {
-                        crosses = true;
-                        break;
-                    }
-                }
-                if (!crosses) {
-                    notCross.push_back(j);
+            std::vector<int> sum_mask(ndsMask[0].size(), 0);
+
+            // Sum up the values in nds_mask[rel]
+            for (size_t r : rel) {
+                for (size_t j = 0; j < ndsMask[r].size(); ++j) {
+                    sum_mask[j] += ndsMask[r][j];
                 }
             }
 
-            for (const auto& nc : notCross) {
-                children[nc]->covered.push_back(halfspaces[hs]);
+            // Find the indices where the sum is zero
+            for (size_t nc = 0; nc < sum_mask.size(); ++nc) {
+                if (sum_mask[nc] == 0) {
+                    if (nc < children.size()) {
+                        children[nc]->covered.push_back(halfspaces[hs]);
+                    } else {
+                        std::cerr << "Index out of bounds: " << nc << " >= " << children.size() << std::endl;
+                        return;
+                    }
+                }
             }
         }
     }
+
+    std::cout << "Finished distributing halfspaces to children nodes." << std::endl;
 }
