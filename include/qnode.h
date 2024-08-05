@@ -29,7 +29,7 @@ public:
     std::vector<Halfspace> getCovered() const;
 
     // Insert halfspaces into the node
-    void insertHalfspaces(const std::vector<std::array<std::vector<double>, 2>>& masks, const std::vector<Halfspace>& halfspaces);
+    void insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<Halfspace>& halfspaces);
 
     // Getters and setters
     const std::vector<std::array<double, 2>>& getMBR() const { return mbr; }

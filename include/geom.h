@@ -8,6 +8,6 @@
 #include <vector>
 #include <array>
 
-std::vector<std::array<std::vector<double>, 2>> genMasks(int dims);
+std::array<std::vector<std::vector<double>>, 2> genMasks(int dims);
 
 #endif // GEOM_H

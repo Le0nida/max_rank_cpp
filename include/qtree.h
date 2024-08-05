@@ -22,7 +22,7 @@ public:
 private:
     int dims;
     int maxhsnode;
-    std::vector<std::array<std::vector<double>, 2>> masks;
+    std::array<std::vector<std::vector<double>>, 2> masks;
     std::unique_ptr<QNode> root;
 
     std::unique_ptr<QNode> createRoot();

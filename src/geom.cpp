@@ -4,12 +4,22 @@
 
 #include "geom.h"
 
-std::vector<std::array<std::vector<double>, 2>> genMasks(int dims) {
-    std::vector<std::array<std::vector<double>, 2>> masks(dims);
-    // TODO
-    for (int i = 0; i < dims; ++i) {
-        masks[i][0] = {1.0, 0.0}; // Example mask
-        masks[i][1] = {0.0, 1.0}; // Example mask
+std::array<std::vector<std::vector<double>>, 2> genMasks(int dims) {
+    std::array<std::vector<std::vector<double>>, 2> masks;
+
+    //TODO
+
+    // Resize the vectors to hold the appropriate number of elements
+    masks[0].resize(9, std::vector<double>(dims)); // Point masks
+    masks[1].resize(9, std::vector<double>(dims)); // Node masks
+
+    // Example masks initialization
+    for (int i = 0; i < 9; ++i) {
+        for (int j = 0; j < dims; ++j) {
+            masks[0][i][j] = (i == j) ? 1.0 : 0.0; // Identity-like mask for points
+            masks[1][i][j] = (i % 2 == 0) ? 1.0 : 0.0; // Alternating mask for nodes
+        }
     }
+
     return masks;
 }
