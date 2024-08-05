@@ -14,8 +14,9 @@ public:
 };
 
 enum Position {
-    IN,
-    OUT
+    IN = 1,
+    OUT = -1,
+    on = 0
 };
 
 #endif //HALFSPACE_H
