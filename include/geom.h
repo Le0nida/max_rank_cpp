@@ -6,8 +6,7 @@
 #define GEOM_H
 
 #include <vector>
-#include <array>
 
-std::array<std::vector<std::vector<double>>, 2> genMasks(int dims);
+std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> genmasks(int dims);
 
 #endif // GEOM_H

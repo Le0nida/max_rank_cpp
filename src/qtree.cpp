@@ -12,7 +12,8 @@
 
 // Constructor for QTree
 QTree::QTree(int dims, int maxhsnode) : dims(dims), maxhsnode(maxhsnode) {
-    masks = genMasks(dims);
+    auto masks_pair = genmasks(dims);
+    masks = {masks_pair.first, masks_pair.second};
     root = createroot();
 }
 
