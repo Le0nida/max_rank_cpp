@@ -50,8 +50,8 @@ protected:
         std::cout << "Tearing down test fixture..." << std::endl;
     }
 
-    int dims;
-    int maxhsnode;
+    int dims{};
+    int maxhsnode{};
     std::unique_ptr<QTree> qtree;
     std::vector<Halfspace> halfspaces;
 };

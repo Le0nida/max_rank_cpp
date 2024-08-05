@@ -49,7 +49,7 @@ std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> ge
     }
 
     // Calculate nds_mask
-    std::vector<std::vector<int>> nds_mask(pts.size(), std::vector<int>(1 << dims, 0));
+    std::vector<std::vector<double>> nds_mask(pts.size(), std::vector<double>(1 << dims, 0));
     for (size_t p = 0; p < pts.size(); ++p) {
         for (int n = 0; n < (1 << dims); ++n) {
             bool match = true;

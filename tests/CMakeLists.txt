@@ -16,9 +16,14 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
-# Add test executable
+# Add test executable for QNode
 add_executable(test_qnode test_qnode.cpp)
 target_link_libraries(test_qnode gtest_main qtree_lib)
 include(GoogleTest)
 gtest_discover_tests(test_qnode)
 
+# Add test executable for QTree
+add_executable(test_qtree test_qtree.cpp)
+target_link_libraries(test_qtree gtest_main qtree_lib)
+include(GoogleTest)
+gtest_discover_tests(test_qtree)
