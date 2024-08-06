@@ -18,20 +18,52 @@
 using namespace std;
 
 class Cell;
-
-vector<vector<double>> readCSV(const string& filename) {
+vector<Point> readCSV(const string& filename) {
     ifstream file(filename);
-    vector<vector<double>> data;
+    vector<Point> data;
     string line, word;
+
+    // Check if the file opened successfully
+    if (!file.is_open()) {
+        throw runtime_error("Could not open file: " + filename);
+    }
+
+    // Skip the header line
+    if (getline(file, line)) {
+        // Successfully read the header line, do nothing
+    } else {
+        // Failed to read the header line, possibly empty file
+        throw runtime_error("Empty or invalid file: " + filename);
+    }
 
     while (getline(file, line)) {
         stringstream ss(line);
         vector<double> row;
+        int id = -1;
+        bool first = true;
+
         while (getline(ss, word, ',')) {
-            row.push_back(stod(word));
+            try {
+                if (first) {
+                    id = stoi(word); // First value is the ID
+                    first = false;
+                } else {
+                    row.push_back(stod(word)); // Rest are coordinates
+                }
+            } catch (const invalid_argument& e) {
+                cerr << "Invalid argument: " << word << " in file " << filename << endl;
+                throw;
+            } catch (const out_of_range& e) {
+                cerr << "Out of range: " << word << " in file " << filename << endl;
+                throw;
+            }
         }
-        data.push_back(row);
+
+        if (id != -1 && !row.empty()) {
+            data.emplace_back(row, id);
+        }
     }
+
     return data;
 }
 
@@ -72,11 +104,7 @@ int main(int argc, char* argv[]) {
     string method = argv[3];
 
     // Load data
-    auto data_vec = readCSV(datafile);
-    vector<Point> data;
-    for (const auto& row : data_vec) {
-        data.emplace_back(row);
-    }
+    vector<Point> data = readCSV(datafile);
     cout << "Loaded " << data.size() << " records from " << datafile << endl;
 
     // Load query
@@ -87,7 +115,7 @@ int main(int argc, char* argv[]) {
     vector<vector<double>> res;
     vector<vector<double>> cells;
 
-    if (data_vec[0].size() > 2) {
+    if (data[0].dims > 2) {
         for (int q : query) {
             cout << "#  Processing data point " << q << "  #" << endl;
             int idx = q - 1;  // Assuming query contains 1-based indices
