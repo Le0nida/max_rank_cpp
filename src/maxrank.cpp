@@ -4,22 +4,27 @@
 
 #include "maxrank.h"
 #include "query.h"
-#include "qtree.h"
 #include "cell.h"
+#include "qtree.h"
 #include <algorithm>
 #include <iostream>
 
-class Cell;
 
 std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
+
+    QTree qt(p.dims - 1, 10);
+    std::vector<Point> dominators = getdominators(data, p);
+    std::vector<Point> incomp = getincomparables(data, p);
+
     auto updateqt = [&](const std::vector<Point>& old_sky) {
         std::vector<Point> new_sky = getskyline(incomp);
         std::vector<HalfSpace> new_halfspaces = genhalfspaces(p, new_sky);
-        std::vector<Point> unique_new_halfspaces;
+        std::vector<HalfSpace> unique_new_halfspaces;
+
         for (const auto& hs : new_halfspaces) {
             bool found = false;
             for (const auto& os : old_sky) {
-                if (std::equal(hs.coord.begin(), hs.coord.end(), os.coord.begin())) {
+                if (std::equal(hs.pnt.coord.begin(), hs.pnt.coord.end(), os.coord.begin())) {
                     found = true;
                     break;
                 }
@@ -28,6 +33,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                 unique_new_halfspaces.push_back(hs);
             }
         }
+
         new_halfspaces = std::move(unique_new_halfspaces);
 
         if (!new_halfspaces.empty()) {
@@ -35,7 +41,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted" << std::endl;
         }
 
-        std::vector<QNode*> new_leaves = qt.getLeaves();
+        std::vector<QNode*> new_leaves = qt.getleaves();
         for (auto _leaf : new_leaves) {
             _leaf->getOrder();
         }
@@ -44,9 +50,8 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         return std::make_pair(new_sky, new_leaves);
     };
 
-    QTree qt(p.dims - 1, 10);
-    std::vector<Point> dominators = getdominators(data, p);
-    std::vector<Point> incomp = getincomparables(data, p);
+
+
 
     auto [sky, leaves] = updateqt({});
 
@@ -65,11 +70,11 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             }
 
             int hamweight = 0;
-            while (hamweight <= leaf->halfspaces.size() && leaf->getOrder() + hamweight <= minorder && leaf->getOrder() + hamweight <= minorder_singular) {
+            while (hamweight <= leaf->getHalfspaces().size() && leaf->getOrder() + hamweight <= minorder && leaf->getOrder() + hamweight <= minorder_singular) {
                 if (hamweight >= 3) {
                     std::cout << "> Leaf " << leaf << ": Evaluating Hamming strings of weight " << hamweight << std::endl;
                 }
-                std::vector<std::string> hamstrings = genhammingstrings(leaf->halfspaces.size(), hamweight);
+                std::vector<std::string> hamstrings = genhammingstrings(leaf->getHalfspaces().size(), hamweight);
                 std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
 
                 if (!cells.empty()) {
@@ -116,7 +121,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             std::cout << "> Expansion " << n_exp << ": " << to_expand.size() << " halfspace(s) will be expanded" << std::endl;
             for (auto& hs : to_expand) {
                 hs.arr = Arrangement::SINGULAR;
-                auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point& pt) { return std::equal(hs.coord.begin(), hs.coord.end(), pt.coord.begin()); });
+                auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point& pt) { return std::equal(hs.pnt.coord.begin(), hs.pnt.coord.end(), pt.coord.begin()); });
                 if (it != incomp.end()) {
                     incomp.erase(it);
                 }

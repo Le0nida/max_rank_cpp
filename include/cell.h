@@ -2,15 +2,15 @@
 // Created by leona on 06/08/2024.
 //
 
-#ifndef MAXRANK_H
-#define MAXRANK_H
-#include <string>
-#include <vector>
+#ifndef CELL_H
+#define CELL_H
 
+#include <string>
+#include <utility> // For std::pair
+#include <vector>
+#include "geom.h"
 #include "halfspace.h"
 #include "qnode.h"
-
-class HalfSpace;
 
 class Cell {
 public:
@@ -41,4 +41,4 @@ public:
 std::vector<std::string> genhammingstrings(int strlen, int weight);
 std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::string>& hamstrings);
 
-#endif //MAXRANK_H
+#endif // CELL_H
