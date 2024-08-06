@@ -3,6 +3,13 @@ project(MaxRankProject)
 
 set(CMAKE_CXX_STANDARD 17)
 
+
+# Set the path to Eigen
+set(EIGEN3_INCLUDE_DIR "C:/Program Files (x86)/C-Libraries/eigen-3.4.0")
+
+# Include Eigen
+include_directories(${EIGEN3_INCLUDE_DIR})
+
 # Add subdirectories
 add_subdirectory(src)
 add_subdirectory(tests)
