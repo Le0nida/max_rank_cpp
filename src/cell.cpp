@@ -14,7 +14,7 @@
 #include <iomanip>
 #include <stdexcept>
 #include <bitset>
-#include <Highs.h>
+#include <src/Highs.h>
 
 Cell::Cell(int order, const std::string& mask, const std::vector<HalfSpace>& covered, const std::vector<HalfSpace>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr, const Point& feasible_pnt)
     : order(order), mask(mask), covered(covered), halfspaces(halfspaces), leaf_mbr(leaf_mbr), feasible_pnt(feasible_pnt) {}
