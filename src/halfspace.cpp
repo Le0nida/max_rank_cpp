@@ -9,8 +9,6 @@
 #include <cassert>
 #include <limits>
 
-Point::Point(const std::vector<double>& coord, int id) : id(id), coord(coord), dims(coord.size()) {}
-
 HalfLine::HalfLine(const Point& pnt) : pnt(pnt), dims(2), arr(Arrangement::AUGMENTED) {
     m = pnt.coord[0] - pnt.coord[1];
     q = pnt.coord[1];
@@ -23,6 +21,9 @@ double HalfLine::get_y(double x) const {
 HalfSpace::HalfSpace(const Point& pnt, const Eigen::VectorXd& coeff, double known)
     : pnt(pnt), coeff(coeff), known(known), dims(coeff.size()), arr(Arrangement::AUGMENTED) {}
 
+bool HalfSpace::operator==(const HalfSpace& other) const {
+    return pnt.coord == other.pnt.coord && coeff == other.coeff && known == other.known && arr == other.arr && dims == other.dims;
+}
 
 Point find_halflines_intersection(const HalfLine& r, const HalfLine& s) {
     if (r.m == s.m) {

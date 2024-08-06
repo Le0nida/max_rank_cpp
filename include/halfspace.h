@@ -42,6 +42,8 @@ public:
     double known;
     Arrangement arr;
     int dims;
+
+    bool operator==(const HalfSpace& other) const;
 };
 
 Point find_halflines_intersection(const HalfLine& r, const HalfLine& s);
