@@ -6,13 +6,14 @@
 #define QTREE_H
 
 #include "qnode.h"
+#include "halfspace.h"
 #include <vector>
 #include <array>
 
 class QTree {
 public:
     QTree(int dims, int maxhsnode);
-    void inserthalfspaces(const std::vector<Halfspace>& halfspaces);
+    void inserthalfspaces(const std::vector<HalfSpace>& halfspaces);
     std::vector<QNode*> getleaves();
 
 private:

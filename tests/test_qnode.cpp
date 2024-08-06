@@ -10,11 +10,10 @@
 #include <iostream>
 
 // Helper function to create a sample Halfspace
-Halfspace createHalfspace(const std::vector<double>& coeff, double known) {
-    Halfspace hs;
-    hs.coeff = coeff;
-    hs.known = known;
-    return hs;
+HalfSpace createHalfspace(const std::vector<double>& coeff, double known) {
+    Point dummyPoint({0.0, 0.0}); // Assuming a dummy point for construction
+    Eigen::VectorXd coeff_eigen = Eigen::Map<const Eigen::VectorXd>(coeff.data(), coeff.size());
+    return {dummyPoint, coeff_eigen, known};
 }
 
 // Test fixture for QNode
@@ -106,7 +105,7 @@ protected:
     }
 
     QNode* root{};
-    std::vector<Halfspace> halfspaces;
+    std::vector<HalfSpace> halfspaces;
     std::array<std::vector<std::vector<double>>, 2> masks;
 };
 
@@ -149,7 +148,7 @@ TEST_F(QNodeTest, GetOrder) {
 // Test for getCovered
 TEST_F(QNodeTest, GetCovered) {
     std::cout << "Running GetCovered test..." << std::endl;
-    std::vector<Halfspace> covered = root->getCovered();
+    std::vector<HalfSpace> covered = root->getCovered();
     std::cout << "Covered size before insertHalfspaces: " << covered.size() << std::endl;
     EXPECT_TRUE(covered.empty());
 

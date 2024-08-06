@@ -4,8 +4,8 @@
 
 #include "qtree.h"
 #include "qnode.h"
-#include "halfspace.h"
 #include "geom.h"
+#include "halfspace.h"
 #include <vector>
 #include <array>
 #include <numeric>
@@ -64,7 +64,7 @@ void QTree::splitnode(QNode* node) {
 }
 
 // Insert halfspaces into the tree
-void QTree::inserthalfspaces(const std::vector<Halfspace>& halfspaces) {
+void QTree::inserthalfspaces(const std::vector<HalfSpace>& halfspaces) {
     std::vector<QNode*> to_search = {root};
     root->setHalfspaces(halfspaces);
 

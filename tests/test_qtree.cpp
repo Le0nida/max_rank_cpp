@@ -3,19 +3,18 @@
 //
 
 #include <gtest/gtest.h>
-#include "QTree.h"
-#include "qnode.h"
 #include "halfspace.h"
+#include "qtree.h"
+#include "qnode.h"
 #include <vector>
-#include <array>
 #include <iostream>
 
 // Helper function to create a sample Halfspace
-Halfspace createHalfspace(const std::vector<double>& coeff, double known) {
-    Halfspace hs;
-    hs.coeff = coeff;
-    hs.known = known;
-    return hs;
+HalfSpace createHalfspace(const std::vector<double>& coeff, double known)
+{
+    Point dummyPoint({0.0, 0.0}); // Assuming a dummy point for construction
+    Eigen::VectorXd coeff_eigen = Eigen::Map<const Eigen::VectorXd>(coeff.data(), coeff.size());
+    return {dummyPoint, coeff_eigen, known};
 }
 
 // Test fixture for QTree
@@ -53,7 +52,7 @@ protected:
     int dims{};
     int maxhsnode{};
     std::unique_ptr<QTree> qtree;
-    std::vector<Halfspace> halfspaces;
+    std::vector<HalfSpace> halfspaces;
 };
 
 // Test for inserting halfspaces

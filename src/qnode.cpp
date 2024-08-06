@@ -41,8 +41,8 @@ size_t QNode::getOrder() const {
 
 
 // Retrieves the covering halfspaces by traversing back up the tree.
-std::vector<Halfspace> QNode::getCovered() const{
-    std::vector<Halfspace> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
+std::vector<HalfSpace> QNode::getCovered() const{
+    std::vector<HalfSpace> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
     const QNode* ref = parent;
 
     // Traverse back up the tree to accumulate the covered halfspaces from parent nodes.
@@ -55,7 +55,7 @@ std::vector<Halfspace> QNode::getCovered() const{
 }
 
 // Inserts halfspaces into the node and distributes them to children nodes if necessary.
-void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<Halfspace>& halfspaces) {
+void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<HalfSpace>& halfspaces) {
     std::vector<double> incr(mbr.size());
     std::vector<double> half(mbr.size());
 
@@ -84,7 +84,7 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
     std::cout << "Calculated pts values." << std::endl;
 
     // Extract coefficients and known values from halfspaces.
-    std::vector<std::vector<double>> coeff;
+    std::vector<Eigen::VectorXd> coeff;
     std::vector<double> known;
     for (const auto& hs : halfspaces) {
         coeff.push_back(hs.coeff);
@@ -96,8 +96,9 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
     // Determine the position of points relative to each halfspace.
     std::vector<std::vector<int>> pos(pts.size(), std::vector<int>(halfspaces.size(), 0));
     for (size_t i = 0; i < pts.size(); ++i) {
+        Eigen::VectorXd pt = Eigen::Map<Eigen::VectorXd>(pts[i].data(), pts[i].size());
         for (size_t j = 0; j < halfspaces.size(); ++j) {
-            pos[i][j] = (std::inner_product(pts[i].begin(), pts[i].end(), coeff[j].begin(), 0.0) < known[j]) ? Position::IN : Position::OUT;
+            pos[i][j] = (pt.dot(coeff[j]) < known[j]) ? static_cast<int>(Position::IN) : static_cast<int>(Position::OUT);
         }
     }
 
@@ -114,7 +115,7 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 
         // Determine which children nodes the halfspace crosses.
         std::vector<size_t> cross;
-        for (size_t j = 0; j < ndsMask.size(); ++j) {
+        for (size_t j = 0; j < ndsMask[0].size(); ++j) {
             bool crosses = false;
             for (const auto& r : rel) {
                 if (ndsMask[r][j] > 0) {
@@ -138,7 +139,7 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
         }
 
         // Add halfspace to covered list of appropriate children nodes if not crossing.
-        if (pos[0][hs] == Position::IN) {
+        if (pos[0][hs] == static_cast<int>(Position::IN)) {
             std::vector<int> sum_mask(ndsMask[0].size(), 0);
 
             // Sum up the values in nds_mask[rel]
@@ -164,3 +165,4 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 
     std::cout << "Finished distributing halfspaces to children nodes." << std::endl;
 }
+
