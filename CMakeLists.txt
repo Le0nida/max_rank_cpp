@@ -10,6 +10,10 @@ set(EIGEN3_INCLUDE_DIR "C:/Program Files (x86)/C-Libraries/eigen-3.4.0")
 # Include Eigen
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+# Include HIGHS
+set(HIGHS_INCLUDE_DIR "C:/Program Files (x86)/C-Libraries/HiGHS/src")
+include_directories(${HIGHS_INCLUDE_DIR})
+
 # Add subdirectories
 add_subdirectory(src)
 add_subdirectory(tests)
