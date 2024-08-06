@@ -9,6 +9,10 @@
 #include <bitset>
 #include <iostream>
 
+
+Point::Point(const std::vector<double>& coord, int id) : id(id), coord(coord), dims(coord.size()) {}
+
+
 std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> genmasks(int dims) {
     std::vector<double> incr(dims, 0.5);
     std::vector<std::vector<double>> pts(1, std::vector<double>(dims, 0.5));
