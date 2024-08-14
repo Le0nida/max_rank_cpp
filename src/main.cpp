@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
     cout << "Loaded " << data.size() << " records from " << datafile << endl;
 
     // Load query
-    auto query = readQuery(queryfile);
+    auto query = {1}; //readQuery(queryfile);
     cout << "Loaded " << query.size() << " queries from " << queryfile << endl;
 
     // Main MaxRank routine
