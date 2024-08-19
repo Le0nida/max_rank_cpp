@@ -134,21 +134,158 @@ std::vector<std::string> genhammingstrings(int strlen, int weight)
     return hamming_strings;
 }
 
+struct LinprogResult
+{
+    double* x;
+    double fun;
+    int status;
+    char message[128];
+};
+
+void free_linprog_result(LinprogResult* result) {
+    delete[] result->x;
+    delete result;
+}
+
+
+LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* b_ub,
+                             const double* bounds, int num_vars, int num_constraints)
+{
+    auto* result = new LinprogResult;
+
+    Highs highs;
+
+    // Define the problem dimensions
+    const int num_col = num_vars;
+    const int num_row = num_constraints;
+
+    // Objective function coefficients
+    std::vector<double> col_cost(c, c + num_col);
+
+    // Prepare A_ub in CSR format
+    std::vector<int> A_start(num_row + 1);
+    std::vector<int> A_index;
+    std::vector<double> A_value;
+
+    int count = 0;
+    for (int i = 0; i < num_row; ++i)
+    {
+        A_start[i] = count;
+        for (int j = 0; j < num_col; ++j)
+        {
+            double value = A_ub[i * num_col + j];
+            if (value != 0.0)
+            {
+                A_index.push_back(j);
+                A_value.push_back(value);
+                count++;
+            }
+        }
+    }
+    A_start[num_row] = count;
+
+    // Right-hand side values (upper bounds)
+    std::vector<double> row_upper(b_ub, b_ub + num_row);
+    // Left-hand side values (lower bounds)
+    std::vector<double> row_lower(num_row, -kHighsInf);
+
+    // Variable bounds
+    std::vector<double> col_lower(num_col);
+    std::vector<double> col_upper(num_col);
+
+    for (int i = 0; i < num_col; ++i)
+    {
+        col_lower[i] = bounds[2 * i];
+        col_upper[i] = bounds[2 * i + 1];
+    }
+
+    // Add columns and rows to HiGHS
+    highs.addCols(num_col, col_cost.data(), col_lower.data(), col_upper.data(),
+                  0, nullptr, nullptr, nullptr);
+    highs.addRows(num_row, row_lower.data(), row_upper.data(),
+                  A_value.size(), A_start.data(), A_index.data(), A_value.data());
+
+    // Run HiGHS
+    highs.run();
+
+    // Get solution
+    HighsSolution solution = highs.getSolution();
+    HighsModelStatus model_status = highs.getModelStatus();
+
+    // Prepare the result
+    result->x = new double[num_col];
+    for (int i = 0; i < num_col; ++i)
+    {
+        result->x[i] = solution.col_value[i];
+    }
+    result->fun = highs.getObjectiveValue();
+    result->status = static_cast<int>(model_status);
+    strncpy(result->message, highs.modelStatusToString(model_status).c_str(), 128);
+
+    return result;
+}
+
+
+
+
+std::tuple<std::vector<double>, double, int, std::string>
+linprog_highs(const std::vector<double>& c, const std::vector<std::vector<double>>& A_ub,
+              const std::vector<double>& b_ub, const std::vector<std::pair<double, double>>& bounds) {
+
+    int num_vars = c.size();
+    int num_constraints = b_ub.size();
+
+    // Converti il vettore c in un array di double
+    std::vector<double> c_array(c.begin(), c.end());
+
+    // Converti la matrice A_ub in un array piatto di double
+    std::vector<double> A_ub_array;
+    A_ub_array.reserve(num_constraints * num_vars);
+    for (const auto& row : A_ub) {
+        A_ub_array.insert(A_ub_array.end(), row.begin(), row.end());
+    }
+
+    // Converti il vettore b_ub in un array di double
+    std::vector<double> b_ub_array(b_ub.begin(), b_ub.end());
+
+    // Converti i bounds in un array piatto di double
+    std::vector<double> bounds_array;
+    bounds_array.reserve(2 * num_vars);
+    for (const auto& bound : bounds) {
+        bounds_array.push_back(bound.first);
+        bounds_array.push_back(bound.second);
+    }
+
+    // Chiama la funzione C++ linprog_highs con i parametri convertiti
+    LinprogResult* result = linprog_highs(c_array.data(), A_ub_array.data(), b_ub_array.data(),
+                                          bounds_array.data(), num_vars, num_constraints);
+
+    // Estrai i risultati dalla struttura LinprogResult
+    std::vector<double> solution(result->x, result->x + num_vars);
+    double fun = result->fun;
+    int status = result->status;
+    std::string message(result->message);
+
+    // Libera la memoria allocata per il risultato
+    free_linprog_result(result);
+
+    // Restituisci i risultati come tuple
+    return std::make_tuple(solution, fun, status, message);
+}
+
+
 std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::string>& hamstrings)
 {
     std::vector<Cell> cells;
     int dims = leaf.getMBR().size();
     std::vector<HalfSpace> leaf_covered = leaf.getCovered();
 
-    // If there are no halfspaces, then the whole leaf is the mincell
     auto halfspaces = leaf.getHalfspaces();
-    if (halfspaces.empty())
-    {
+    if (halfspaces.empty()) {
         std::vector<std::array<double, 2>> mbr = leaf.getMBR();
         std::vector<double> feasible_coords(mbr.size());
-        for (size_t i = 0; i < mbr.size(); ++i)
-        {
-            feasible_coords[i] = (mbr[i][0] + mbr[i][1]) / 2.0; // Scegli un punto centrale nel bounding box
+        for (size_t i = 0; i < mbr.size(); ++i) {
+            feasible_coords[i] = (mbr[i][0] + mbr[i][1]) / 2.0;
         }
         Point feasible_pnt(feasible_coords);
         std::vector<HalfSpace> empty_halfspaces;
@@ -163,118 +300,46 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
 
     Eigen::VectorXd b_ub = Eigen::VectorXd::Ones(halfspaces.size() + 1);
 
-    std::vector<std::pair<double, double>> bounds(dims);
-    for (int d = 0; d < dims; ++d)
-    {
-        bounds[d] = {leaf.getMBR()[d][0], leaf.getMBR()[d][1]};
+    // Configurazione dei bounds
+    std::vector<std::pair<double, double>> bounds(dims + 1);
+    for (int d = 0; d < dims; ++d) {
+        bounds[d] = {leaf.getMBR()[d][0], leaf.getMBR()[d][1]};  // Limiti per le prime dims variabili
     }
-    bounds.push_back({0, std::numeric_limits<double>::infinity()});
+    bounds[dims] = {0, std::numeric_limits<double>::infinity()}; // Limite per la variabile slack
 
-    for (const auto& hamstr : hamstrings)
-    {
-        for (int b = 0; b < hamstr.size(); ++b)
-        {
-            if (hamstr[b] == '0')
-            {
+    for (const auto& hamstr : hamstrings) {
+        for (int b = 0; b < hamstr.size(); ++b) {
+            if (hamstr[b] == '0') {
                 A_ub.row(b).head(dims) = -halfspaces[b].coeff;
                 b_ub[b] = -halfspaces[b].known;
-            }
-            else
-            {
+            } else {
                 A_ub.row(b).head(dims) = halfspaces[b].coeff;
-                b_ub[b] = halfspaces[b].known;
+                b_ub[b] = leaf.getHalfspaces()[b].known;
             }
         }
 
-        // Convert to appropriate types for the linear programming solver
-        std::vector<double> c_std(c.data(), c.data() + c.size());
-        std::vector<std::vector<double>> A_ub_std;
-        for (int i = 0; i < A_ub.rows(); ++i)
-        {
-            A_ub_std.push_back(std::vector<double>(A_ub.row(i).data(), A_ub.row(i).data() + A_ub.cols()));
+        std::vector<std::vector<double>> A_ub_std(A_ub.rows(), std::vector<double>(A_ub.cols()));
+        for (int i = 0; i < A_ub.rows(); ++i) {
+            for (int j = 0; j < A_ub.cols(); ++j) {
+                A_ub_std[i][j] = A_ub(i, j);
+            }
         }
+
+        std::vector<double> c_std(c.data(), c.data() + c.size());
         std::vector<double> b_ub_std(b_ub.data(), b_ub.data() + b_ub.size());
 
+        auto [solution, fun, status, message] = linprog_highs(c_std, A_ub_std, b_ub_std, bounds);
 
-        Highs highs;
-        HighsLp model;
-
-        // Configurazione di base del modello LP
-        model.num_col_ = dims + 1;
-        model.num_row_ = A_ub_std.size();
-        model.sense_ = ObjSense::kMaximize;
-
-        // Definizione dei costi della funzione obiettivo
-        model.col_cost_ = c_std;
-
-        // Definizione dei limiti sulle variabili
-        model.col_lower_ = std::vector<double>(dims + 1, 0);
-        model.col_upper_ = std::vector<double>(dims + 1, std::numeric_limits<double>::infinity());
-
-        // Definizione dei limiti sulle righe
-        model.row_lower_ = std::vector<double>(A_ub_std.size(), -std::numeric_limits<double>::infinity());
-        model.row_upper_ = b_ub_std;
-
-        // Configurazione della matrice sparse A
-        HighsSparseMatrix matrix;
-        matrix.num_col_ = dims + 1;
-        matrix.num_row_ = A_ub_std.size();
-
-        std::vector<HighsInt> start(A_ub_std.size() + 1, 0);
-        std::vector<HighsInt> index;
-        std::vector<double> value;
-
-        int index_counter = 0;
-        for (int i = 0; i < A_ub_std.size(); ++i)
-        {
-            start[i] = index_counter;
-            for (int j = 0; j < dims + 1; ++j)
-            {
-                if (A_ub_std[i][j] != 0.0)
-                {
-                    // Aggiungi solo i valori non zero
-                    index.push_back(j);
-                    value.push_back(A_ub_std[i][j]);
-                    ++index_counter;
-                }
-            }
-        }
-        start[A_ub_std.size()] = index_counter;
-
-        matrix.start_ = std::move(start);
-        matrix.index_ = std::move(index);
-        matrix.value_ = std::move(value);
-
-        // Assegna la matrice al modello
-        model.a_matrix_ = matrix;
-
-        // Carica il modello nel solver
-        HighsStatus status = highs.passModel(model);
-
-        // Esegui l'ottimizzazione
-        if (status == HighsStatus::kOk)
-        {
-            status = highs.run();
-
-            if (status == HighsStatus::kOk)
-            {
-                const auto& highs_solution = highs.getSolution();
-                std::vector<double> solution(highs_solution.col_value.begin(), highs_solution.col_value.begin() + dims);
-
-                Point feasible_pnt(solution);
-                Cell cell(0, hamstr, leaf_covered, leaf.getHalfspaces(), leaf.getMBR(), feasible_pnt);
-                cells.push_back(cell);
-            }
-            else
-            {
-                std::cerr << "Highs solver failed to run." << std::endl;
-            }
-        }
-        else
-        {
-            std::cerr << "Failed to pass model to Highs solver." << std::endl;
+        if (status == static_cast<int>(HighsModelStatus::kOptimal)) {
+            Point feasible_pnt(std::vector<double>(solution.begin(), solution.end() - 1));
+            Cell cell(0, hamstr, leaf_covered, leaf.getHalfspaces(), leaf.getMBR(), feasible_pnt);
+            cells.push_back(cell);
+            break;
+        } else {
+            std::cerr << "HiGHS solver failed with status: " << status << " - " << message << std::endl;
         }
     }
 
     return cells;
 }
+
