@@ -66,25 +66,23 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         std::vector<Cell> mincells;
 
         for (auto leaf : leaves) {
-            if (leaf->getOrder() > minorder || leaf->getOrder() > minorder_singular) {
+            int leaf_order = static_cast<int>(leaf->getOrder());
+            if (leaf_order > minorder || leaf_order > minorder_singular) {
                 break;
             }
 
             int hamweight = 0;
-            while (hamweight <= leaf->getHalfspaces().size() && leaf->getOrder() + hamweight <= minorder && leaf->getOrder() + hamweight <= minorder_singular) {
-                if (hamweight >= 3) {
-                    std::cout << "> Leaf " << leaf << ": Evaluating Hamming strings of weight " << hamweight << std::endl;
-                }
-                std::vector<std::string> hamstrings = genhammingstrings(leaf->getHalfspaces().size(), hamweight);
+            while (hamweight <= leaf->getHalfspaces().size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
+                std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->getHalfspaces().size()), hamweight);
                 std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
 
                 if (!cells.empty()) {
                     for (auto& cell : cells) {
-                        cell.order = leaf->getOrder() + hamweight;
+                        cell.order = leaf_order + hamweight;
                     }
 
-                    if (minorder > leaf->getOrder() + hamweight) {
-                        minorder = leaf->getOrder() + hamweight;
+                    if (minorder > leaf_order + hamweight) {
+                        minorder = leaf_order + hamweight;
                         mincells = std::move(cells);
                     } else {
                         mincells.insert(mincells.end(), cells.begin(), cells.end());
