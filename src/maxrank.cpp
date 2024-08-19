@@ -8,6 +8,7 @@
 #include "qtree.h"
 #include <algorithm>
 #include <iostream>
+//#include <unordered_set>
 
 
 std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
@@ -15,12 +16,12 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
     QTree qt(p.dims - 1, 10);
     std::vector<Point> dominators = getdominators(data, p);
     std::vector<Point> incomp = getincomparables(data, p);
+    std::vector<std::pair<int, int>> hsSINGULAR;
 
     auto updateqt = [&](const std::vector<Point>& old_sky) {
         std::vector<Point> new_sky = getskyline(incomp);
         std::vector<HalfSpace> new_halfspaces = genhalfspaces(p, new_sky);
         std::vector<HalfSpace> unique_new_halfspaces;
-
         for (const auto& hs : new_halfspaces) {
             bool found = false;
             for (const auto& os : old_sky) {
@@ -98,13 +99,35 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         int new_singulars = 0;
         std::vector<HalfSpace> to_expand;
         for (auto& cell : mincells) {
+            for (int i = 0; i < cell.covered.size(); i++)
+            {
+                auto h = cell.covered[i];
+                for (auto j: hsSINGULAR)
+                {
+                    if (j.second == h.pnt.id) //&& j.first == n_exp)
+                    {
+                        cell.covered[i].arr = Arrangement::SINGULAR;
+                        break;
+                    }
+                }
+            }
             if (cell.issingular()) {
                 minorder_singular = cell.order;
                 mincells_singular.push_back(cell);
                 new_singulars++;
             } else {
+                //std::unordered_set<int> hsSINGULAR_set(hsSINGULAR.begin(), hsSINGULAR.end());
                 for (const auto& hs : cell.covered) {
-                    if (hs.arr == Arrangement::AUGMENTED && std::find(to_expand.begin(), to_expand.end(), hs) == to_expand.end()) {
+                    bool ok = true;
+                    for (auto i: hsSINGULAR)
+                    {
+                        if (i.second == hs.pnt.id && i.first == n_exp)
+                        {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (ok && std::find(to_expand.begin(), to_expand.end(), hs) == to_expand.end()) {
                         to_expand.push_back(hs);
                     }
                 }
@@ -121,6 +144,8 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             std::cout << "> Expansion " << n_exp << ": " << to_expand.size() << " halfspace(s) will be expanded" << std::endl;
             for (auto& hs : to_expand) {
                 hs.arr = Arrangement::SINGULAR;
+                std::pair<int, int> pair = std::make_pair(n_exp, hs.pnt.id);
+                hsSINGULAR.push_back(pair);
                 auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point& pt) { return std::equal(hs.pnt.coord.begin(), hs.pnt.coord.end(), pt.coord.begin()); });
                 if (it != incomp.end()) {
                     incomp.erase(it);
