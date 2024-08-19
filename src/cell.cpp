@@ -155,6 +155,11 @@ LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* 
 
     Highs highs;
 
+    // Disabilita l'output a console di HiGHS
+    HighsOptions options;
+    options.output_flag = false;
+    highs.passOptions(options);
+
     // Define the problem dimensions
     const int num_col = num_vars;
     const int num_row = num_constraints;
@@ -335,8 +340,6 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
             Cell cell(0, hamstr, leaf_covered, leaf.getHalfspaces(), leaf.getMBR(), feasible_pnt);
             cells.push_back(cell);
             break;
-        } else {
-            std::cerr << "HiGHS solver failed with status: " << status << " - " << message << std::endl;
         }
     }
 
