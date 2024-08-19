@@ -24,13 +24,11 @@ bool QNode::isLeaf() const {
 
 // Computes the order of the node by traversing back up the tree.
 size_t QNode::getOrder() const {
-    std::cout << "Calculating order for node: " << this << std::endl;
     size_t localOrder = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
     const QNode* ref = parent;
 
     // Traverse back up the tree to accumulate the order from parent nodes.
     while (ref) {
-        std::cout << "Parent node: " << ref << std::endl;
         localOrder += ref->covered.size();
         ref = ref->parent;
     }
@@ -81,8 +79,6 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
         }
     }
 
-    std::cout << "Calculated pts values." << std::endl;
-
     // Extract coefficients and known values from halfspaces.
     std::vector<Eigen::VectorXd> coeff;
     std::vector<double> known;
@@ -90,8 +86,6 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
         coeff.push_back(hs.coeff);
         known.push_back(hs.known);
     }
-
-    std::cout << "Extracted coefficients and known values." << std::endl;
 
     // Determine the position of points relative to each halfspace.
     std::vector<std::vector<int>> pos(pts.size(), std::vector<int>(halfspaces.size(), 0));
@@ -101,8 +95,6 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
             pos[i][j] = (pt.dot(coeff[j]) < known[j]) ? static_cast<int>(Position::IN) : static_cast<int>(Position::OUT);
         }
     }
-
-    std::cout << "Determined positions of points relative to halfspaces." << std::endl;
 
     // Distribute halfspaces to children nodes based on their positions.
     for (size_t hs = 0; hs < halfspaces.size(); ++hs) {
@@ -162,7 +154,5 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
             }
         }
     }
-
-    std::cout << "Finished distributing halfspaces to children nodes." << std::endl;
 }
 
