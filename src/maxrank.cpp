@@ -44,7 +44,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
         std::vector<QNode*> new_leaves = qt.getleaves();
         for (auto _leaf : new_leaves) {
-            _leaf->getOrder();
+            _leaf->setOrder();
         }
         std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->getOrder() < b->getOrder(); });
 

@@ -22,7 +22,7 @@ public:
     bool isLeaf() const;
 
     // Get the order of the node
-    size_t getOrder() const;
+    void setOrder() const;
 
     // Get the covered halfspaces
     std::vector<HalfSpace> getCovered() const;
@@ -34,6 +34,7 @@ public:
     const std::vector<std::array<double, 2>>& getMBR() const { return mbr; }
     bool isNorm() const { return norm; }
     void setNorm(bool norm) { this->norm = norm; }
+    size_t getOrder() const { return order; }
     const std::vector<std::unique_ptr<QNode>>& getChildren() const { return children; }
     void addChild(std::unique_ptr<QNode> child) { children.push_back(std::move(child)); }
     const std::vector<HalfSpace>& getHalfspaces() const { return halfspaces; }

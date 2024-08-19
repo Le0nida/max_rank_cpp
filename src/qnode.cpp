@@ -23,7 +23,7 @@ bool QNode::isLeaf() const {
 }
 
 // Computes the order of the node by traversing back up the tree.
-size_t QNode::getOrder() const {
+void QNode::setOrder() const {
     size_t localOrder = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
     const QNode* ref = parent;
 
@@ -34,7 +34,6 @@ size_t QNode::getOrder() const {
     }
 
     order = localOrder;
-    return localOrder;
 }
 
 
