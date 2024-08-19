@@ -34,3 +34,7 @@
 /.idea
 /src/cmake-build-debug
 /tests/cmake-build-debug
+/maxrank
+/.vs
+/out
+CMakeSettings.json
