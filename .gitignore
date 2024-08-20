@@ -38,3 +38,5 @@
 /.vs
 /out
 CMakeSettings.json
+/cmake-build-release
+/maxreankrelease
