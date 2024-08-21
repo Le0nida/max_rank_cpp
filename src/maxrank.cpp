@@ -119,7 +119,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                     bool ok = true;
                     for (auto i: hsSINGULAR)
                     {
-                        if (i.second == hs.pnt.id && i.first == n_exp)
+                        if (i.second == hs.pnt.id)// && i.first == n_exp)
                         {
                             ok = false;
                             break;
