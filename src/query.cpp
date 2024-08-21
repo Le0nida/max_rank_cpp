@@ -1,18 +1,25 @@
-//
-// Created by leona on 06/08/2024.
-//
-
 #include "query.h"
-#include <Eigen/Dense>
+#include <vector>
+#include <algorithm>
 
 std::vector<Point> getdominators(const std::vector<Point>& data, const Point& p) {
     std::vector<Point> dominators;
 
     for (const auto& r : data) {
-        Eigen::Array<bool, Eigen::Dynamic, 1> less_equal = Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array() <= Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array();
-        Eigen::Array<bool, Eigen::Dynamic, 1> less = Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array() < Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array();
+        bool less_equal = true;
+        bool less = false;
 
-        if (less_equal.all() && less.any()) {
+        for (size_t i = 0; i < p.dims; ++i) {
+            if (r.coord[i] > p.coord[i]) {
+                less_equal = false;
+                break;
+            }
+            if (r.coord[i] < p.coord[i]) {
+                less = true;
+            }
+        }
+
+        if (less_equal && less) {
             dominators.push_back(r);
         }
     }
@@ -24,10 +31,20 @@ std::vector<Point> getdominees(const std::vector<Point>& data, const Point& p) {
     std::vector<Point> dominees;
 
     for (const auto& r : data) {
-        Eigen::Array<bool, Eigen::Dynamic, 1> greater_equal = Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array() >= Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array();
-        Eigen::Array<bool, Eigen::Dynamic, 1> greater = Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array() > Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array();
+        bool greater_equal = true;
+        bool greater = false;
 
-        if (greater_equal.all() && greater.any()) {
+        for (size_t i = 0; i < p.dims; ++i) {
+            if (r.coord[i] < p.coord[i]) {
+                greater_equal = false;
+                break;
+            }
+            if (r.coord[i] > p.coord[i]) {
+                greater = true;
+            }
+        }
+
+        if (greater_equal && greater) {
             dominees.push_back(r);
         }
     }
@@ -39,10 +56,19 @@ std::vector<Point> getincomparables(const std::vector<Point>& data, const Point&
     std::vector<Point> incomp;
 
     for (const auto& r : data) {
-        Eigen::Array<bool, Eigen::Dynamic, 1> less = Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array() < Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array();
-        Eigen::Array<bool, Eigen::Dynamic, 1> greater = Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array() > Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array();
+        bool less = false;
+        bool greater = false;
 
-        if (less.any() && greater.any()) {
+        for (size_t i = 0; i < p.dims; ++i) {
+            if (r.coord[i] < p.coord[i]) {
+                less = true;
+            }
+            if (r.coord[i] > p.coord[i]) {
+                greater = true;
+            }
+        }
+
+        if (less && greater) {
             incomp.push_back(r);
         }
     }
@@ -52,10 +78,20 @@ std::vector<Point> getincomparables(const std::vector<Point>& data, const Point&
 
 std::vector<Point> getskyline(const std::vector<Point>& data) {
     auto dominates = [](const Point& p, const Point& r) {
-        Eigen::Array<bool, Eigen::Dynamic, 1> less_equal = Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array() <= Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array();
-        Eigen::Array<bool, Eigen::Dynamic, 1> less = Eigen::Map<const Eigen::VectorXd>(p.coord.data(), p.dims).array() < Eigen::Map<const Eigen::VectorXd>(r.coord.data(), r.dims).array();
+        bool less_equal = true;
+        bool less = false;
 
-        return less_equal.all() && less.any();
+        for (size_t i = 0; i < p.dims; ++i) {
+            if (p.coord[i] > r.coord[i]) {
+                less_equal = false;
+                break;
+            }
+            if (p.coord[i] < r.coord[i]) {
+                less = true;
+            }
+        }
+
+        return less_equal && less;
     };
 
     std::vector<Point> window;

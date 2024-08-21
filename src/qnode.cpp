@@ -56,6 +56,7 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
     std::vector<double> incr(mbr.size());
     std::vector<double> half(mbr.size());
 
+    // Calcolo di incr e half
     for (size_t i = 0; i < mbr.size(); ++i) {
         incr[i] = (mbr[i][1] - mbr[i][0]) / 2.0;
         half[i] = (mbr[i][0] + mbr[i][1]) / 2.0;
@@ -68,43 +69,44 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
     const auto& ptsMask = masks[0];  // Point masks for halfspace insertion.
     const auto& ndsMask = masks[1];  // Node masks for halfspace insertion.
 
-    // Calculate the points for the masks.
+    // Calcola i punti per le maschere
     std::vector<std::vector<double>> pts(ptsMask.size(), std::vector<double>(half.size()));
-
-    // Calculate pts
     for (size_t i = 0; i < ptsMask.size(); ++i) {
         for (size_t j = 0; j < mbr.size(); ++j) {
             pts[i][j] = incr[j] * ptsMask[i][j] + half[j];
         }
     }
 
-    // Extract coefficients and known values from halfspaces.
-    std::vector<Eigen::VectorXd> coeff;
+    // Estrai coefficienti e valori noti dalle halfspaces.
+    std::vector<std::vector<double>> coeff;
     std::vector<double> known;
     for (const auto& hs : halfspaces) {
         coeff.push_back(hs.coeff);
         known.push_back(hs.known);
     }
 
-    // Determine the position of points relative to each halfspace.
+    // Determina la posizione dei punti relativi a ciascuna halfspace
     std::vector<std::vector<int>> pos(pts.size(), std::vector<int>(halfspaces.size(), 0));
     for (size_t i = 0; i < pts.size(); ++i) {
-        Eigen::VectorXd pt = Eigen::Map<Eigen::VectorXd>(pts[i].data(), pts[i].size());
         for (size_t j = 0; j < halfspaces.size(); ++j) {
-            pos[i][j] = (pt.dot(coeff[j]) < known[j]) ? static_cast<int>(Position::IN) : static_cast<int>(Position::OUT);
+            double dot_product = 0.0;
+            for (size_t k = 0; k < coeff[j].size(); ++k) {
+                dot_product += pts[i][k] * coeff[j][k];
+            }
+            pos[i][j] = (dot_product < known[j]) ? static_cast<int>(Position::IN) : static_cast<int>(Position::OUT);
         }
     }
 
-    // Distribute halfspaces to children nodes based on their positions.
+    // Distribuire le halfspaces ai nodi figli in base alle loro posizioni
     for (size_t hs = 0; hs < halfspaces.size(); ++hs) {
-        std::vector<size_t> rel;  // Relative positions where the points' positions differ.
+        std::vector<size_t> rel;  // Posizioni relative dove le posizioni dei punti differiscono
         for (size_t i = 0; i < pos.size(); ++i) {
             if (pos[i][hs] != pos[0][hs]) {
                 rel.push_back(i);
             }
         }
 
-        // Determine which children nodes the halfspace crosses.
+        // Determina quali nodi figli la halfspace attraversa
         std::vector<size_t> cross;
         for (size_t j = 0; j < ndsMask[0].size(); ++j) {
             bool crosses = false;
@@ -119,7 +121,7 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
             }
         }
 
-        // Add halfspace to the appropriate children nodes.
+        // Aggiungi halfspace ai nodi figli appropriati
         for (const auto& c : cross) {
             if (c < children.size()) {
                 children[c]->halfspaces.push_back(halfspaces[hs]);
@@ -129,18 +131,18 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
             }
         }
 
-        // Add halfspace to covered list of appropriate children nodes if not crossing.
+        // Aggiungi halfspace alla lista covered dei nodi figli appropriati se non attraversa
         if (pos[0][hs] == static_cast<int>(Position::IN)) {
             std::vector<int> sum_mask(ndsMask[0].size(), 0);
 
-            // Sum up the values in nds_mask[rel]
+            // Somma i valori in nds_mask[rel]
             for (size_t r : rel) {
                 for (size_t j = 0; j < ndsMask[r].size(); ++j) {
                     sum_mask[j] += ndsMask[r][j];
                 }
             }
 
-            // Find the indices where the sum is zero
+            // Trova gli indici dove la somma è zero
             for (size_t nc = 0; nc < sum_mask.size(); ++nc) {
                 if (sum_mask[nc] == 0) {
                     if (nc < children.size()) {
@@ -154,4 +156,3 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
         }
     }
 }
-

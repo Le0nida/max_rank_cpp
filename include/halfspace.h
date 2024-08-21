@@ -7,7 +7,6 @@
 
 #include <vector>
 #include "geom.h"
-#include <Eigen/Dense>
 
 enum Position {
     IN = 1,
@@ -35,10 +34,10 @@ public:
 
 class HalfSpace {
 public:
-    HalfSpace(const Point& pnt, const Eigen::VectorXd& coeff, double known);
+    HalfSpace(const Point& pnt, const std::vector<double>& coeff, double known);
 
     Point pnt;
-    Eigen::VectorXd coeff;
+    std::vector<double> coeff;
     double known;
     Arrangement arr;
     int dims;

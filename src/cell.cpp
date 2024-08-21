@@ -1,14 +1,9 @@
-//
-// Created by leona on 06/08/2024.
-//
-
 #include "cell.h"
 #include "halfspace.h"
 #include "qtree.h"
 #include <cmath>
 #include <algorithm>
 #include <random>
-#include <Eigen/Dense>
 #include <iostream>
 #include <limits>
 #include <iomanip>
@@ -16,6 +11,7 @@
 #include <bitset>
 #include <src/Highs.h>
 
+// Constructor for Cell class remains unchanged
 Cell::Cell(int order, const std::string& mask, const std::vector<HalfSpace>& covered,
            const std::vector<HalfSpace>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr,
            const Point& feasible_pnt)
@@ -29,6 +25,7 @@ bool Cell::issingular() const
                        [](const HalfSpace& hs) { return hs.arr == Arrangement::SINGULAR; });
 }
 
+// Constructor for Interval class remains unchanged
 Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
     : halfline(halfline), range(range), coversleft(coversleft)
 {
@@ -147,7 +144,6 @@ void free_linprog_result(LinprogResult* result) {
     delete result;
 }
 
-
 LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* b_ub,
                              const double* bounds, int num_vars, int num_constraints)
 {
@@ -230,9 +226,6 @@ LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* 
     return result;
 }
 
-
-
-
 std::tuple<std::vector<double>, double, int, std::string>
 linprog_highs(const std::vector<double>& c, const std::vector<std::vector<double>>& A_ub,
               const std::vector<double>& b_ub, const std::vector<std::pair<double, double>>& bounds) {
@@ -278,7 +271,6 @@ linprog_highs(const std::vector<double>& c, const std::vector<std::vector<double
     return std::make_tuple(solution, fun, status, message);
 }
 
-
 std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::string>& hamstrings)
 {
     std::vector<Cell> cells;
@@ -297,13 +289,15 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
         return {Cell(0, "", leaf_covered, empty_halfspaces, mbr, feasible_pnt)};
     }
 
-    Eigen::VectorXd c = Eigen::VectorXd::Zero(dims + 1);
+    // C now as a vector<double>
+    std::vector<double> c(dims + 1, 0.0);
     c[dims] = -1;
 
-    Eigen::MatrixXd A_ub = Eigen::MatrixXd::Ones(halfspaces.size() + 1, dims + 1);
-    A_ub(halfspaces.size(), dims) = 0;
+    // A_ub now as a vector of vectors
+    std::vector<std::vector<double>> A_ub(halfspaces.size() + 1, std::vector<double>(dims + 1, 1.0));
+    A_ub[halfspaces.size()][dims] = 0.0;
 
-    Eigen::VectorXd b_ub = Eigen::VectorXd::Ones(halfspaces.size() + 1);
+    std::vector<double> b_ub(halfspaces.size() + 1, 1.0);
 
     // Configurazione dei bounds
     std::vector<std::pair<double, double>> bounds(dims + 1);
@@ -315,25 +309,19 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
     for (const auto& hamstr : hamstrings) {
         for (int b = 0; b < hamstr.size(); ++b) {
             if (hamstr[b] == '0') {
-                A_ub.row(b).head(dims) = -halfspaces[b].coeff;
+                for (int i = 0; i < dims; ++i) {
+                    A_ub[b][i] = -halfspaces[b].coeff[i];
+                }
                 b_ub[b] = -halfspaces[b].known;
             } else {
-                A_ub.row(b).head(dims) = halfspaces[b].coeff;
+                for (int i = 0; i < dims; ++i) {
+                    A_ub[b][i] = halfspaces[b].coeff[i];
+                }
                 b_ub[b] = leaf.getHalfspaces()[b].known;
             }
         }
 
-        std::vector<std::vector<double>> A_ub_std(A_ub.rows(), std::vector<double>(A_ub.cols()));
-        for (int i = 0; i < A_ub.rows(); ++i) {
-            for (int j = 0; j < A_ub.cols(); ++j) {
-                A_ub_std[i][j] = A_ub(i, j);
-            }
-        }
-
-        std::vector<double> c_std(c.data(), c.data() + c.size());
-        std::vector<double> b_ub_std(b_ub.data(), b_ub.data() + b_ub.size());
-
-        auto [solution, fun, status, message] = linprog_highs(c_std, A_ub_std, b_ub_std, bounds);
+        auto [solution, fun, status, message] = linprog_highs(c, A_ub, b_ub, bounds);
 
         if (status == static_cast<int>(HighsModelStatus::kOptimal)) {
             Point feasible_pnt(std::vector<double>(solution.begin(), solution.end() - 1));
@@ -345,4 +333,3 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
 
     return cells;
 }
-
