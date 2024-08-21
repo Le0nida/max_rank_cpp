@@ -108,7 +108,7 @@ int main(int argc, char* argv[]) {
     cout << "Loaded " << data.size() << " records from " << datafile << endl;
 
     // Load query
-    auto query = {1}; //readQuery(queryfile);
+    auto query = readQuery(queryfile);
     cout << "Loaded " << query.size() << " queries from " << queryfile << endl;
 
     // Main MaxRank routine
@@ -160,8 +160,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Write results to CSV
-    writeCSV("maxrank.csv", res, { "id", "maxrank" });
-    writeCSV("cells.csv", cells, { "id", "query_found" });
+    writeCSV(R"(C:\Users\leona\Desktop\maxrank.csv)", res, { "id", "maxrank" });
+    writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, { "id", "query_found" });
 
     return 0;
 }
