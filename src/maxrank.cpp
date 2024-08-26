@@ -138,19 +138,19 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
         if (to_expand.empty()) {
             return {static_cast<int>(dominators.size()) + minorder_singular + 1, mincells_singular};
-        } else {
-            n_exp++;
-            std::cout << "> Expansion " << n_exp << ": " << to_expand.size() << " halfspace(s) will be expanded" << std::endl;
-            for (auto& hs : to_expand) {
-                hs.arr = Arrangement::SINGULAR;
-                std::pair<int, int> pair = std::make_pair(n_exp, hs.pnt.id);
-                hsSINGULAR.push_back(pair);
-                auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point& pt) { return std::equal(hs.pnt.coord.begin(), hs.pnt.coord.end(), pt.coord.begin()); });
-                if (it != incomp.end()) {
-                    incomp.erase(it);
-                }
-            }
-            std::tie(sky, leaves) = updateqt(sky);
         }
+
+        n_exp++;
+        std::cout << "> Expansion " << n_exp << ": " << to_expand.size() << " halfspace(s) will be expanded" << std::endl;
+        for (auto& hs : to_expand) {
+            hs.arr = Arrangement::SINGULAR;
+            std::pair<int, int> pair = std::make_pair(n_exp, hs.pnt.id);
+            hsSINGULAR.push_back(pair);
+            auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point& pt) { return std::equal(hs.pnt.coord.begin(), hs.pnt.coord.end(), pt.coord.begin()); });
+            if (it != incomp.end()) {
+                incomp.erase(it);
+            }
+        }
+        std::tie(sky, leaves) = updateqt(sky);
     }
 }
