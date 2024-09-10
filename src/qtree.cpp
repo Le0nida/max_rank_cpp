@@ -8,7 +8,10 @@
 #include "halfspace.h"
 #include <vector>
 #include <array>
+#include <iostream>
 #include <numeric>
+
+#include "lrucache.h"
 
 // Constructor for QTree
 QTree::QTree(int dims, int maxhsnode) : dims(dims), maxhsnode(maxhsnode) {
@@ -18,15 +21,16 @@ QTree::QTree(int dims, int maxhsnode) : dims(dims), maxhsnode(maxhsnode) {
 }
 
 // Create the root node and split it
-QNode* QTree::createroot() {
+std::shared_ptr<QNode> QTree::createroot() {
     std::vector<std::array<double, 2>> mbr(dims, {0.0, 1.0});
-    auto* root = new QNode(nullptr, mbr);
+    std::shared_ptr<QNode> root = std::make_shared<QNode>(-1, mbr);
     splitnode(root);
+    globalCache.add(root);
     return root;
 }
 
 // Split the given node
-void QTree::splitnode(QNode* node) {
+void QTree::splitnode(std::shared_ptr<QNode> node) {
     const auto& mbr = node->getMBR();
     std::vector<double> mindim(dims);
     std::vector<double> maxdim(dims);
@@ -55,57 +59,104 @@ void QTree::splitnode(QNode* node) {
             child_mbr[i] = {child_mindim[i], child_maxdim[i]};
         }
 
-        auto child = std::make_unique<QNode>(node, child_mbr);
+        auto child = std::make_unique<QNode>(node->getNodeID(), child_mbr);
         if (std::accumulate(child_mindim.begin(), child_mindim.end(), 0.0) >= 1.0) {
             child->setNorm(false);
         }
-        node->addChild(std::move(child));
+        node->addChildID(child->getNodeID());
+        globalCache.add(std::move(child));
     }
 }
 
 // Insert halfspaces into the tree
 void QTree::inserthalfspaces(const std::vector<HalfSpace>& halfspaces) {
-    std::vector<QNode*> to_search = {root};
+    std::vector<int> to_search = {root->getNodeID()};  // Memorizza solo gli ID dei nodi
     root->setHalfspaces(halfspaces);
 
     while (!to_search.empty()) {
-        QNode* current = to_search.back();
+        int currentID = to_search.back();
         to_search.pop_back();
 
+        std::shared_ptr<QNode> current;
+        if (currentID == 0)
+        {
+            current = root;
+        }
+        else
+        {
+            current = globalCache.get(currentID);  // Recupera il nodo dalla cache
+        }
+
+        // Verifica che il nodo esista
+        if (!current) {
+            std::cerr << "Error: Node with ID " << currentID << " is null." << std::endl;
+            continue;
+        }
+        // Inserisce gli halfspaces e pulisce il nodo
         current->insertHalfspaces(masks, current->getHalfspaces());
         current->clearHalfspaces();
 
-        for (const auto& child : current->getChildren()) {
+
+        // Copia locale sicura degli ID dei figli
+        std::vector<int> childrenIDs = current->getChildrenIDs();
+
+        for (const auto childID : childrenIDs) {
+            std::shared_ptr<QNode> child = globalCache.get(childID);
+
+            // Verifica che il figlio esista
+            if (!child) {
+                std::cerr << "Error: Child with ID " << childID << " is null." << std::endl;
+                continue;
+            }
+
             if (child->isNorm()) {
                 if (!child->isLeaf() && !child->getHalfspaces().empty()) {
-                    to_search.push_back(child.get());
+                    to_search.push_back(childID);  // Aggiungi l'ID del figlio alla lista di ricerca
                 } else if (child->getHalfspaces().size() > maxhsnode) {
-                    splitnode(child.get());
-                    to_search.push_back(child.get());
+                    splitnode(child);
+                    to_search.push_back(childID);
                 }
             }
         }
     }
 }
 
+
+
 // Retrieve all leaves of the QTree
-std::vector<QNode*> QTree::getleaves() {
-    std::vector<QNode*> leaves;
-    std::vector<QNode*> to_search = {root};
+std::vector<std::shared_ptr<QNode>> QTree::getleaves() {
+    std::vector<std::shared_ptr<QNode>> leaves;
+    std::vector<std::shared_ptr<QNode>> to_search = {root};  // Contiene i nodi da elaborare
 
     while (!to_search.empty()) {
-        QNode* current = to_search.back();
+        std::shared_ptr<QNode> current = to_search.back();
         to_search.pop_back();
+
+        globalCache.lockNode(current->getNodeID());  // Blocca il nodo durante l'elaborazione
+
+        std::vector<int> childrenIDs = current->getChildrenIDs();  // Copia locale sicura
 
         if (current->isNorm()) {
             if (current->isLeaf()) {
-                leaves.push_back(current);
+                leaves.push_back(current);  // Se è una foglia, aggiungila alla lista
             } else {
-                for (const auto& child : current->getChildren()) {
-                    to_search.push_back(child.get());
+                for (const auto childID : childrenIDs) {
+                    std::shared_ptr<QNode> child = globalCache.get(childID);
+
+                    // Verifica che il puntatore al figlio non sia nullo
+                    if (!child) {
+                        std::cerr << "Error: Child with ID " << childID << " is null." << std::endl;
+                        continue;
+                    }
+
+                    globalCache.lockNode(childID);  // Blocca il figlio durante l'elaborazione
+                    to_search.push_back(child);
+                    globalCache.unlockNode(childID);  // Sblocca il figlio dopo l'elaborazione
                 }
             }
         }
+
+        globalCache.unlockNode(current->getNodeID());  // Sblocca il nodo dopo l'elaborazione
     }
 
     return leaves;

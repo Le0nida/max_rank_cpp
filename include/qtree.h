@@ -14,16 +14,16 @@ class QTree {
 public:
     QTree(int dims, int maxhsnode);
     void inserthalfspaces(const std::vector<HalfSpace>& halfspaces);
-    std::vector<QNode*> getleaves();
+    std::vector<std::shared_ptr<QNode>> getleaves();
 
 private:
     int dims;  // Dimensionality of the space wrapped by the tree
     int maxhsnode;  // Maximum number of halfspaces a node can contain before being split up
     std::array<std::vector<std::vector<double>>, 2> masks;  // Masks used in halfspace insertion
-    QNode* root;  // Reference to root node
+    std::shared_ptr<QNode> root;  // Reference to root node
 
-    QNode* createroot();
-    void splitnode(QNode* node);
+    std::shared_ptr<QNode> createroot();
+    void splitnode(std::shared_ptr<QNode> node);
 };
 
 #endif // QTREE_H

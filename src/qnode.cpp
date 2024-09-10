@@ -7,7 +7,7 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>  // Per memcpy
-
+#include "lrucache.h"
 #include <numeric>
 #include "geom.h"
 
@@ -15,43 +15,52 @@
 int globalNodeID = 0;
 
 // Constructor for QNode, initializes the member variables.
-QNode::QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr)
-    : mbr(mbr), norm(true), order(0), parent(parent), nodeID(globalNodeID++){}
+QNode::QNode(int parentID, const std::vector<std::array<double, 2>>& mbr)
+    : mbr(mbr), norm(true), order(0), parentID(parentID), nodeID(globalNodeID++){}
 
 // Checks if the node is the root of the tree.
 bool QNode::isRoot() const {
-    return parent == nullptr;
+    return parentID == -1;
 }
 
 // Checks if the node is a leaf (i.e., has no children).
 bool QNode::isLeaf() const {
-    return children.empty();
+    return childrenIDs.empty();
 }
 
 // Computes the order of the node by traversing back up the tree.
 void QNode::setOrder() const {
     size_t localOrder = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
-    const QNode* ref = parent;
+    std::shared_ptr<QNode> ref = globalCache.get(parentID);
 
     // Traverse back up the tree to accumulate the order from parent nodes.
     while (ref) {
         localOrder += ref->covered.size();
-        ref = ref->parent;
+        ref = globalCache.get(ref->parentID);
     }
 
     order = localOrder;
+}
+
+void QNode::clearHalfspaces()
+{
+    if (!halfspaces.empty()) {
+        halfspaces.clear();
+    } else {
+        std::cerr << "Warning: Attempting to clear empty halfspaces." << std::endl;
+    }
 }
 
 
 // Retrieves the covering halfspaces by traversing back up the tree.
 std::vector<HalfSpace> QNode::getCovered() const{
     std::vector<HalfSpace> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
-    const QNode* ref = parent;
+    std::shared_ptr<QNode> ref = globalCache.get(parentID);;
 
     // Traverse back up the tree to accumulate the covered halfspaces from parent nodes.
     while (ref && !ref->isRoot()) {
         coveredSpaces.insert(coveredSpaces.end(), ref->covered.begin(), ref->covered.end());
-        ref = ref->parent;
+        ref = globalCache.get(ref->parentID);;
     }
 
     return coveredSpaces;
@@ -133,10 +142,12 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 
         // Aggiungi halfspace ai nodi figli appropriati
         for (const auto& c : cross) {
-            if (c < children.size()) {
-                children[c]->halfspaces.push_back(halfspaces[hs]);
+            if (c < childrenIDs.size()) {
+                int childID = childrenIDs[c];
+                auto child = globalCache.get(childID);  // Recupera il figlio dalla cache usando l'ID
+                child->halfspaces.push_back(halfspaces[hs]);  // Inserisci l'halfspace nel nodo figlio
             } else {
-                std::cerr << "Index out of bounds: " << c << " >= " << children.size() << std::endl;
+                std::cerr << "Index out of bounds: " << c << " >= " << childrenIDs.size() << std::endl;
                 return;
             }
         }
@@ -155,10 +166,12 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
             // Trova gli indici dove la somma è zero
             for (size_t nc = 0; nc < ndsMask[0].size(); ++nc) {
                 if (sum_mask[nc] == 0) {
-                    if (nc < children.size()) {
-                        children[nc]->covered.push_back(halfspaces[hs]);
+                    if (nc < childrenIDs.size()) {
+                        int childID = childrenIDs[nc];
+                        std::shared_ptr<QNode> child = globalCache.get(childID);  // Recupera il figlio dalla cache usando l'ID
+                        child->covered.push_back(halfspaces[hs]);  // Aggiungi alla lista covered
                     } else {
-                        std::cerr << "Index out of bounds: " << nc << " >= " << children.size() << std::endl;
+                        std::cerr << "Index out of bounds: " << nc << " >= " << childrenIDs.size() << std::endl;
                         return;
                     }
                 }
@@ -168,22 +181,52 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 }
 
 
-// Serialize the QNode to disk
+// Serializza l'oggetto QNode su disco
 void QNode::saveToDisk(const std::string& filePath) {
     std::ofstream out(filePath, std::ios::binary);
     if (out.is_open()) {
-        out.write(reinterpret_cast<char*>(this), sizeof(QNode));
+        out.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
+
+        // Salva i figli
+        size_t childrenCount = childrenIDs.size();
+        out.write(reinterpret_cast<const char*>(&childrenCount), sizeof(childrenCount));
+        out.write(reinterpret_cast<const char*>(childrenIDs.data()), childrenCount * sizeof(int));
+
+        // Salva gli halfspaces
+        size_t halfspaceCount = halfspaces.size();
+        out.write(reinterpret_cast<const char*>(&halfspaceCount), sizeof(halfspaceCount));
+        for (const auto& hs : halfspaces) {
+            hs.saveToDisk(out);  // Usa il metodo di serializzazione di HalfSpace
+        }
+
+        out.write(reinterpret_cast<const char*>(&norm), sizeof(norm));
         out.close();
     } else {
         std::cerr << "Failed to open file for writing: " << filePath << std::endl;
     }
 }
 
-// Deserialize the QNode from disk
+// Carica l'oggetto QNode da disco
 void QNode::loadFromDisk(const std::string& filePath) {
     std::ifstream in(filePath, std::ios::binary);
     if (in.is_open()) {
-        in.read(reinterpret_cast<char*>(this), sizeof(QNode));
+        in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
+
+        // Carica i figli
+        size_t childrenCount;
+        in.read(reinterpret_cast<char*>(&childrenCount), sizeof(childrenCount));
+        childrenIDs.resize(childrenCount);
+        in.read(reinterpret_cast<char*>(childrenIDs.data()), childrenCount * sizeof(int));
+
+        // Carica gli halfspaces
+        size_t halfspaceCount;
+        in.read(reinterpret_cast<char*>(&halfspaceCount), sizeof(halfspaceCount));
+        halfspaces.resize(halfspaceCount);
+        for (auto& hs : halfspaces) {
+            hs.loadFromDisk(in);  // Usa il metodo di deserializzazione di HalfSpace
+        }
+
+        in.read(reinterpret_cast<char*>(&norm), sizeof(norm));
         in.close();
     } else {
         std::cerr << "Failed to open file for reading: " << filePath << std::endl;

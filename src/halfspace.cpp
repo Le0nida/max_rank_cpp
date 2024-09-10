@@ -23,6 +23,9 @@ double HalfLine::get_y(double x) const {
 HalfSpace::HalfSpace(const Point& pnt, const std::vector<double>& coeff, double known)
     : pnt(pnt), coeff(coeff), known(known), dims(coeff.size()), arr(Arrangement::AUGMENTED) {}
 
+HalfSpace::HalfSpace()
+    : pnt({}), coeff(0), known(0), dims(0), arr(Arrangement::AUGMENTED) {}
+
 bool HalfSpace::operator==(const HalfSpace& other) const {
     return pnt.coord == other.pnt.coord && coeff == other.coeff && known == other.known && arr == other.arr && dims == other.dims;
 }

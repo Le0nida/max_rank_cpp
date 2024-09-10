@@ -43,11 +43,11 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted" << std::endl;
         }
 
-        std::vector<QNode*> new_leaves = qt.getleaves();
+        std::vector<std::shared_ptr<QNode>> new_leaves = qt.getleaves();
         for (auto _leaf : new_leaves) {
             _leaf->setOrder();
         }
-        std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->getOrder() < b->getOrder(); });
+        std::sort(new_leaves.begin(), new_leaves.end(), [](std::shared_ptr<QNode> a, std::shared_ptr<QNode> b) { return a->getOrder() < b->getOrder(); });
 
         return std::make_pair(new_sky, new_leaves);
     };

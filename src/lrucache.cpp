@@ -6,32 +6,59 @@
 #include <fstream>
 #include <iostream>
 
-QNode* LRUCache::get(int nodeID) {
-    // Controlla se il nodo è già in cache
+// Definizione della cache globale
+LRUCache globalCache(100);
+
+std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     if (cache.find(nodeID) != cache.end()) {
-        // Muovi il nodo in cima alla lista LRU
         lruList.remove(nodeID);
         lruList.push_front(nodeID);
-        return cache[nodeID].get();  // Restituisce il puntatore al nodo
+        return cache[nodeID];
     }
 
-    // Se non è in cache, carica il nodo dal disco
-    std::unique_ptr<QNode> node = std::make_unique<QNode>();
+    // Load from disk if not in cache
+    auto node = std::make_shared<QNode>();
     node->loadFromDisk(getFilePath(nodeID));
+    add(node);
+    return cache[nodeID];
+}
 
-    // Se la cache è piena, rimuovi il nodo meno recentemente usato
+void LRUCache::lockNode(int nodeID) {
+    // Aggiungi l'ID del nodo all'insieme dei nodi bloccati
+    lockedNodes.insert(nodeID);
+}
+
+void LRUCache::unlockNode(int nodeID) {
+    // Rimuovi l'ID del nodo dall'insieme dei nodi bloccati
+    lockedNodes.erase(nodeID);
+}
+
+void LRUCache::add(std::shared_ptr<QNode> qnode) {
+
+    int nodeID = qnode->getNodeID();
+    invalidate(nodeID);
     if (cache.size() >= cacheSize) {
         int evictID = lruList.back();
         lruList.pop_back();
-        cache[evictID]->saveToDisk(getFilePath(evictID));
+        cache[evictID]->saveToDisk(getFilePath(evictID));  // Salva su disco
         cache.erase(evictID);
     }
-
-    // Inserisci il nuovo nodo nella cache e sposta la proprietà
-    cache[nodeID] = std::move(node);
+    cache[nodeID] = std::move(qnode);
     lruList.push_front(nodeID);
-    return cache[nodeID].get();  // Restituisce il puntatore al nodo
 }
+
+void LRUCache::invalidate(int nodeID) {
+    if (lockedNodes.find(nodeID) != lockedNodes.end()) {
+        // Se il nodo è bloccato, non fare nulla
+        std::cerr << "Warning: Attempted to evict a locked node with ID " << nodeID << std::endl;
+        return;
+    }
+    if (cache.find(nodeID) != cache.end()) {
+        cache.erase(nodeID);
+        lruList.remove(nodeID);
+    }
+}
+
 
 // Salva lo stato della cache su disco
 void LRUCache::saveCacheToDisk() {

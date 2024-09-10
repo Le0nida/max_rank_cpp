@@ -12,20 +12,43 @@
 
 class QNode {
 public:
-    QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr);
+    QNode(int parentID, const std::vector<std::array<double, 2>>& mbr);
     ~QNode() = default;
     explicit QNode(int id) : nodeID(id) {}
-    QNode() {}
+    QNode() = default;
 
     QNode(const QNode&) = delete;               // Disabilita il costruttore di copia
     QNode& operator=(const QNode&) = delete;    // Disabilita l'assegnazione tramite copia
 
-    QNode(QNode&&) noexcept = default;          // Consenti lo spostamento
-    QNode& operator=(QNode&&) noexcept = default; // Assegnazione tramite spostamento
+
+    QNode(QNode&& other) noexcept
+    : nodeID(other.nodeID),
+      parentID(other.parentID),
+      mbr(std::move(other.mbr)),
+      norm(other.norm),
+      order(other.order),
+      childrenIDs(std::move(other.childrenIDs)),
+      covered(std::move(other.covered)),
+      halfspaces(std::move(other.halfspaces)) {}
+
+    QNode& operator=(QNode&& other) noexcept {
+        if (this != &other) {
+            nodeID = other.nodeID;
+            parentID = other.parentID;
+            mbr = std::move(other.mbr);
+            norm = other.norm;
+            order = other.order;
+            childrenIDs = std::move(other.childrenIDs);
+            covered = std::move(other.covered);
+            halfspaces = std::move(other.halfspaces);
+        }
+        return *this;
+    }
 
 
     // Metodo per ottenere l'ID del nodo
     int getNodeID() const { return nodeID; }
+    int getParentID() const { return parentID; }
 
     // Check if the node is the root
     bool isRoot() const;
@@ -47,11 +70,14 @@ public:
     bool isNorm() const { return norm; }
     void setNorm(bool norm) { this->norm = norm; }
     size_t getOrder() const { return order; }
-    const std::vector<std::unique_ptr<QNode>>& getChildren() const { return children; }
-    void addChild(std::unique_ptr<QNode> child) { children.push_back(std::move(child)); }
+
+    // Get the children IDs instead of actual nodes
+    const std::vector<int>& getChildrenIDs() const { return childrenIDs; }
+    void addChildID(int childID) { childrenIDs.push_back(childID); }
+
     const std::vector<HalfSpace>& getHalfspaces() const { return halfspaces; }
     void setHalfspaces(const std::vector<HalfSpace>& halfspaces) { this->halfspaces = halfspaces; }
-    void clearHalfspaces() { halfspaces.clear(); }
+    void clearHalfspaces();
 
     // Serializes the QNode to disk
     void saveToDisk(const std::string& filePath);
@@ -61,12 +87,12 @@ public:
 
 private:
     int nodeID{};  // ID univoco del nodo
+    int parentID{};             // ID del nodo genitore
 
     std::vector<std::array<double, 2>> mbr;  // Minimum bounding region
     bool norm{};  // Normalization flag
     mutable size_t order{};  // Order of the node
-    QNode* parent{};  // Parent node
-    std::vector<std::unique_ptr<QNode>> children;  // Children nodes
+    std::vector<int> childrenIDs;
     std::vector<HalfSpace> covered;  // Covered halfspaces
     std::vector<HalfSpace> halfspaces;  // Halfspaces in the node
 };
