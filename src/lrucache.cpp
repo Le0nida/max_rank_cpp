@@ -7,7 +7,7 @@
 #include <iostream>
 
 // Definizione della cache globale
-LRUCache globalCache(100);
+LRUCache globalCache(10000);
 
 std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     if (cache.find(nodeID) != cache.end()) {

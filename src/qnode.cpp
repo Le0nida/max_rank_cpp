@@ -34,7 +34,7 @@ void QNode::setOrder() const {
     std::shared_ptr<QNode> ref = globalCache.get(parentID);
 
     // Traverse back up the tree to accumulate the order from parent nodes.
-    while (ref) {
+    while (ref->parentID >= 0) {
         localOrder += ref->covered.size();
         ref = globalCache.get(ref->parentID);
     }
@@ -185,40 +185,68 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 void QNode::saveToDisk(const std::string& filePath) {
     std::ofstream out(filePath, std::ios::binary);
     if (out.is_open()) {
+        // Serialize the nodeID and parentID
         out.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
+        out.write(reinterpret_cast<const char*>(&parentID), sizeof(parentID));
 
-        // Salva i figli
+        // Serialize the MBR
+        size_t mbrSize = mbr.size();
+        out.write(reinterpret_cast<const char*>(&mbrSize), sizeof(mbrSize));
+        out.write(reinterpret_cast<const char*>(mbr.data()), mbrSize * sizeof(std::array<double, 2>));
+
+        // Serialize the norm flag
+        out.write(reinterpret_cast<const char*>(&norm), sizeof(norm));
+
+        // Serialize the children IDs
         size_t childrenCount = childrenIDs.size();
         out.write(reinterpret_cast<const char*>(&childrenCount), sizeof(childrenCount));
         out.write(reinterpret_cast<const char*>(childrenIDs.data()), childrenCount * sizeof(int));
 
-        // Salva gli halfspaces
+        // Serialize the halfspaces
         size_t halfspaceCount = halfspaces.size();
         out.write(reinterpret_cast<const char*>(&halfspaceCount), sizeof(halfspaceCount));
         for (const auto& hs : halfspaces) {
             hs.saveToDisk(out);  // Usa il metodo di serializzazione di HalfSpace
         }
 
-        out.write(reinterpret_cast<const char*>(&norm), sizeof(norm));
+        // Serialize the covered halfspaces
+        size_t coveredCount = covered.size();
+        out.write(reinterpret_cast<const char*>(&coveredCount), sizeof(coveredCount));
+        for (const auto& hs : covered) {
+            hs.saveToDisk(out);  // Usa il metodo di serializzazione di HalfSpace
+        }
+
         out.close();
     } else {
         std::cerr << "Failed to open file for writing: " << filePath << std::endl;
     }
 }
 
+
 // Carica l'oggetto QNode da disco
 void QNode::loadFromDisk(const std::string& filePath) {
     std::ifstream in(filePath, std::ios::binary);
     if (in.is_open()) {
+        // Deserialize the nodeID and parentID
         in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
+        in.read(reinterpret_cast<char*>(&parentID), sizeof(parentID));
 
-        // Carica i figli
+        // Deserialize the MBR
+        size_t mbrSize;
+        in.read(reinterpret_cast<char*>(&mbrSize), sizeof(mbrSize));
+        mbr.resize(mbrSize);
+        in.read(reinterpret_cast<char*>(mbr.data()), mbrSize * sizeof(std::array<double, 2>));
+
+        // Deserialize the norm flag
+        in.read(reinterpret_cast<char*>(&norm), sizeof(norm));
+
+        // Deserialize the children IDs
         size_t childrenCount;
         in.read(reinterpret_cast<char*>(&childrenCount), sizeof(childrenCount));
         childrenIDs.resize(childrenCount);
         in.read(reinterpret_cast<char*>(childrenIDs.data()), childrenCount * sizeof(int));
 
-        // Carica gli halfspaces
+        // Deserialize the halfspaces
         size_t halfspaceCount;
         in.read(reinterpret_cast<char*>(&halfspaceCount), sizeof(halfspaceCount));
         halfspaces.resize(halfspaceCount);
@@ -226,7 +254,14 @@ void QNode::loadFromDisk(const std::string& filePath) {
             hs.loadFromDisk(in);  // Usa il metodo di deserializzazione di HalfSpace
         }
 
-        in.read(reinterpret_cast<char*>(&norm), sizeof(norm));
+        // Deserialize the covered halfspaces
+        size_t coveredCount;
+        in.read(reinterpret_cast<char*>(&coveredCount), sizeof(coveredCount));
+        covered.resize(coveredCount);
+        for (auto& hs : covered) {
+            hs.loadFromDisk(in);  // Usa il metodo di deserializzazione di HalfSpace
+        }
+
         in.close();
     } else {
         std::cerr << "Failed to open file for reading: " << filePath << std::endl;
