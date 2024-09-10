@@ -5,14 +5,18 @@
 #include "qnode.h"
 #include "halfspace.h"
 #include <iostream>
+#include <fstream>
 #include <cstring>  // Per memcpy
 
 #include <numeric>
 #include "geom.h"
 
+// Counter globale per assegnare ID unici (opzione semplice)
+int globalNodeID = 0;
+
 // Constructor for QNode, initializes the member variables.
 QNode::QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr)
-    : mbr(mbr), norm(true), order(0), parent(parent) {}
+    : mbr(mbr), norm(true), order(0), parent(parent), nodeID(globalNodeID++){}
 
 // Checks if the node is the root of the tree.
 bool QNode::isRoot() const {
@@ -160,5 +164,28 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
                 }
             }
         }
+    }
+}
+
+
+// Serialize the QNode to disk
+void QNode::saveToDisk(const std::string& filePath) {
+    std::ofstream out(filePath, std::ios::binary);
+    if (out.is_open()) {
+        out.write(reinterpret_cast<char*>(this), sizeof(QNode));
+        out.close();
+    } else {
+        std::cerr << "Failed to open file for writing: " << filePath << std::endl;
+    }
+}
+
+// Deserialize the QNode from disk
+void QNode::loadFromDisk(const std::string& filePath) {
+    std::ifstream in(filePath, std::ios::binary);
+    if (in.is_open()) {
+        in.read(reinterpret_cast<char*>(this), sizeof(QNode));
+        in.close();
+    } else {
+        std::cerr << "Failed to open file for reading: " << filePath << std::endl;
     }
 }
