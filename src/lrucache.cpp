@@ -6,6 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <future>
 
 // Definizione della cache globale
 LRUCache globalCache(10000);
@@ -20,12 +21,6 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     auto node = std::make_shared<QNode>();
     std::string filePath = getFilePath(nodeID);
     node->loadFromDisk(filePath);
-
-    // Elimina il file associato al nodo dal disco
-    if (remove(filePath.c_str()) != 0) {
-        std::cerr << "Error: Failed to remove file " << filePath << std::endl;
-    }
-
     add(node);
     return node;
 }
@@ -77,17 +72,42 @@ std::string LRUCache::getFilePath(int nodeID) {
     return "node_" + std::to_string(nodeID) + ".dat";
 }
 
-void LRUCache::cleanupAllNodeFiles() {
-    std::wstring filePattern = L"node_*.dat";
-    for (const auto& entry : std::filesystem::directory_iterator(L".")) {
-        if (entry.path().extension() == L".dat" && entry.path().filename().wstring().find(L"node_") == 0) {
-            deleteFile(entry.path().wstring());  // Usa la funzione per cancellare i file wide
-        }
+// Metodo per cancellare i file .dat in batch
+void batchDeleteFiles(const std::vector<std::string>& filepaths) {
+    for (const auto& path : filepaths) {
+        std::filesystem::remove(path);
     }
 }
 
-void LRUCache::deleteFile(const std::wstring& filePath) {
-    if (_wremove(filePath.c_str()) != 0) {
-        std::wcerr << L"Error: Failed to remove file " << filePath << std::endl;
+// Funzione di utility per recuperare tutti i file .dat da una directory
+std::vector<std::string> getAllDatFiles(const std::string& directoryPath) {
+    std::vector<std::string> files;
+    for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
+        if (entry.path().extension() == ".dat") {
+            files.push_back(entry.path().string());
+        }
+    }
+    return files;
+}
+
+// Versione migliorata di cleanup, con cancellazione parallela
+void LRUCache::cleanup() {
+    std::vector<std::string> files = getAllDatFiles(".");
+
+    // Dividi i file in batch per cancellazioni parallele
+    const int batchSize = 6000;
+    std::vector<std::future<void>> futures;
+
+    for (size_t i = 0; i < files.size(); i += batchSize) {
+        std::vector<std::string> batch(files.begin() + i,
+                                       files.begin() + std::min(files.size(), i + batchSize));
+
+        // Crea un thread separato per ogni batch
+        futures.push_back(std::async(std::launch::async, batchDeleteFiles, batch));
+    }
+
+    // Attendi che tutti i thread abbiano terminato
+    for (auto& future : futures) {
+        future.get();
     }
 }

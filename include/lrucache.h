@@ -9,6 +9,7 @@
 #include <list>
 #include <memory>  // Include per std::unique_ptr
 #include <unordered_set>
+#include <thread>
 
 #include "qnode.h"
 
@@ -27,10 +28,7 @@ private:
     std::unordered_set<int> lockedNodes;
 
 public:
-    explicit LRUCache(int size) : cacheSize(size) {
-        // Registra cleanupAllNodeFiles per essere eseguito alla chiusura del programma
-        std::atexit(cleanupAllNodeFiles);
-    }
+    explicit LRUCache(int size) : cacheSize(size) {}
 
     // Get a node by ID, load from disk if not present in cache
     std::shared_ptr<QNode> get(int nodeID);
@@ -44,8 +42,7 @@ public:
     // Helper function to generate file path for node serialization
     std::string getFilePath(int nodeID);
 
-    static void cleanupAllNodeFiles();
-    static void deleteFile(const std::wstring& filePath);
+    void cleanup();
 
 
 };
