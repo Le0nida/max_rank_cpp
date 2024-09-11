@@ -15,10 +15,10 @@
 class LRUCache {
 private:
     // Map of nodeID to std::unique_ptr of QNode
-    std::unordered_map<int, std::shared_ptr<QNode>> cache;
+    std::unordered_map<int, std::list<std::pair<int, std::shared_ptr<QNode>>>::iterator> cache;
 
     // LRU list to track node usage
-    std::list<int> lruList;
+    std::list<std::pair<int, std::shared_ptr<QNode>>> lruList;
 
     // Maximum cache size
     int cacheSize;
