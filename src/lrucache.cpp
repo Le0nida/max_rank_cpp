@@ -5,6 +5,7 @@
 #include "lrucache.h"
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 
 // Definizione della cache globale
 LRUCache globalCache(10000);
@@ -17,7 +18,14 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
 
     // Load from disk if not in cache
     auto node = std::make_shared<QNode>();
-    node->loadFromDisk(getFilePath(nodeID));
+    std::string filePath = getFilePath(nodeID);
+    node->loadFromDisk(filePath);
+
+    // Elimina il file associato al nodo dal disco
+    if (remove(filePath.c_str()) != 0) {
+        std::cerr << "Error: Failed to remove file " << filePath << std::endl;
+    }
+
     add(node);
     return node;
 }
@@ -67,4 +75,19 @@ void LRUCache::invalidate(int nodeID) {
 
 std::string LRUCache::getFilePath(int nodeID) {
     return "node_" + std::to_string(nodeID) + ".dat";
+}
+
+void LRUCache::cleanupAllNodeFiles() {
+    std::wstring filePattern = L"node_*.dat";
+    for (const auto& entry : std::filesystem::directory_iterator(L".")) {
+        if (entry.path().extension() == L".dat" && entry.path().filename().wstring().find(L"node_") == 0) {
+            deleteFile(entry.path().wstring());  // Usa la funzione per cancellare i file wide
+        }
+    }
+}
+
+void LRUCache::deleteFile(const std::wstring& filePath) {
+    if (_wremove(filePath.c_str()) != 0) {
+        std::wcerr << L"Error: Failed to remove file " << filePath << std::endl;
+    }
 }

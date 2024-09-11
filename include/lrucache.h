@@ -27,7 +27,10 @@ private:
     std::unordered_set<int> lockedNodes;
 
 public:
-    explicit LRUCache(int size) : cacheSize(size) {}
+    explicit LRUCache(int size) : cacheSize(size) {
+        // Registra cleanupAllNodeFiles per essere eseguito alla chiusura del programma
+        std::atexit(cleanupAllNodeFiles);
+    }
 
     // Get a node by ID, load from disk if not present in cache
     std::shared_ptr<QNode> get(int nodeID);
@@ -41,8 +44,10 @@ public:
     // Helper function to generate file path for node serialization
     std::string getFilePath(int nodeID);
 
-    // Save the current cache state to disk
-    void saveCacheToDisk();
+    static void cleanupAllNodeFiles();
+    static void deleteFile(const std::wstring& filePath);
+
+
 };
 
 // Dichiarazione della cache globale
