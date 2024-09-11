@@ -14,7 +14,6 @@
 #include "qtree.h"
 #include "query.h"
 #include "cell.h"
-#include "lrucache.h"
 
 using namespace std;
 
@@ -160,7 +159,6 @@ int main(int argc, char* argv[]) {
         }*/
     }
 
-    globalCache.cleanup();
     // Write results to CSV
     writeCSV(R"(C:\Users\leona\Desktop\maxrank.csv)", res, { "id", "maxrank" });
     writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, { "id", "query_found" });

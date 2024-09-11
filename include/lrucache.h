@@ -30,6 +30,9 @@ private:
 public:
     explicit LRUCache(int size) : cacheSize(size) {}
 
+    ~LRUCache() {
+        cleanup();
+    }
     // Get a node by ID, load from disk if not present in cache
     std::shared_ptr<QNode> get(int nodeID);
 
