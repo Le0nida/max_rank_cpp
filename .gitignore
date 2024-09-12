@@ -41,3 +41,4 @@ CMakeSettings.json
 /cmake-build-release
 /maxreankrelease
 /maxrankrtree
+*.zip
