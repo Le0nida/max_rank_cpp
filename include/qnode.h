@@ -62,7 +62,7 @@ public:
 
 
     size_t saveToDisk(std::fstream& outStream);           // Serializes the QNode to disk
-    void loadFromDisk(std::fstream& inStream, std::streampos offset);         // Loads the QNode from disk
+    void loadFromDisk(std::fstream& inStream);         // Loads the QNode from disk
 
 private:
     long int nodeID;                        // ID univoco del nodo
@@ -75,6 +75,8 @@ private:
     std::vector<long int> childrenIDs;
     std::vector<long int> covered;          // Covered halfspaces
     std::vector<long int> halfspaces;       // Halfspaces in the node
+
+    size_t estimatedSize() const;
 };
 
 #endif //QNODE_H

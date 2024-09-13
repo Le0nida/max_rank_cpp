@@ -11,7 +11,6 @@
 // Definizione della cache globale
 LRUCache globalCache(10000);
 
-// lrucache.cpp
 std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     // Check if node is in cache
     if (cache.find(nodeID) != cache.end()) {
@@ -23,7 +22,16 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     auto it = index.find(nodeID);
     if (it != index.end()) {
         auto node = std::make_shared<QNode>();
-        node->loadFromDisk(dataFile, it->second.offset);
+
+        // Clear error flags
+        dataFile.clear();
+
+        // Seek to the offset for reading
+        dataFile.seekg(it->second.offset, std::ios::beg);
+
+        // Load the node from disk
+        node->loadFromDisk(dataFile);
+
         add(node);
         return node;
     } else {
@@ -42,7 +50,6 @@ void LRUCache::unlockNode(int nodeID) {
     lockedNodes.erase(nodeID);
 }
 
-// lrucache.cpp
 void LRUCache::add(std::shared_ptr<QNode> qnode) {
     int nodeID = qnode->getNodeID();
     invalidate(nodeID);
@@ -56,17 +63,15 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
         // Ensure we're at the end of the file
         dataFile.clear(); // Clear any error flags
         dataFile.seekp(0, std::ios::end);
-
-        // Get the current offset
         std::streampos offset = dataFile.tellp();
 
         // Save the node to the data file
         evictNode->saveToDisk(dataFile);
 
-        // Flush the output to synchronize the stream
+        // Flush the output buffer to ensure data is written
         dataFile.flush();
 
-        // Update the index with the offset only
+        // Update the index with the offset
         index[evictID] = {offset};
 
         cache.erase(evictID);
@@ -75,6 +80,7 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
     lruList.emplace_front(nodeID, qnode);
     cache[nodeID] = lruList.begin();
 }
+
 
 
 void LRUCache::invalidate(int nodeID) {

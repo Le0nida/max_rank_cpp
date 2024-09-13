@@ -6,6 +6,7 @@
 #define LRUCACHE_H
 
 #include <future>
+#include <iostream>
 #include <unordered_map>
 #include <list>
 #include <memory>  // Include per std::unique_ptr
@@ -40,12 +41,12 @@ private:
     };
     std::unordered_map<int, IndexEntry> index;
 
-    // File stream for nodes.dat
-    std::fstream dataFile;
-
     // Path to data and index files
     std::string dataFilePath = "nodes.dat";
     std::string indexFilePath = "index.dat";
+
+    // Single file stream for nodes.dat
+    std::fstream dataFile;
 
     // Helper methods
     void loadIndex();
@@ -53,13 +54,18 @@ private:
 
 public:
     explicit LRUCache(int size) : cacheSize(size) {
-        // Open the data file in read-write mode, create if doesn't exist
+        // Open the data file in read-write mode
         dataFile.open(dataFilePath, std::ios::in | std::ios::out | std::ios::binary);
         if (!dataFile.is_open()) {
             // File doesn't exist, create it
             dataFile.open(dataFilePath, std::ios::out | std::ios::binary);
             dataFile.close();
             dataFile.open(dataFilePath, std::ios::in | std::ios::out | std::ios::binary);
+        }
+
+        if (!dataFile.is_open()) {
+            std::cerr << "Failed to open data file: " << dataFilePath << std::endl;
+            exit(EXIT_FAILURE);
         }
 
         // Load the index from disk
@@ -70,8 +76,16 @@ public:
         // Ensure all nodes in cache are saved
         for (auto& [nodeID, nodeIter] : cache) {
             auto& node = nodeIter->second;
+
+            // Move to the end of the file
+            dataFile.clear(); // Clear any error flags
+            dataFile.seekp(0, std::ios::end);
             std::streampos offset = dataFile.tellp();
-            size_t size = node->saveToDisk(dataFile);
+
+            // Save the node
+            node->saveToDisk(dataFile);
+
+            // Update the index
             index[nodeID] = {offset};
         }
 
@@ -79,9 +93,7 @@ public:
         saveIndex();
 
         // Close data file
-        if (dataFile.is_open()) {
-            dataFile.close();
-        }
+        if (dataFile.is_open()) dataFile.close();
 
         // Perform cleanup if necessary
         cleanup();

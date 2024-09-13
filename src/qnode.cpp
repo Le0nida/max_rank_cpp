@@ -184,12 +184,13 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 // qnode.cpp
 size_t QNode::saveToDisk(std::fstream& outStream) {
     if (!outStream.is_open()) {
-        std::cerr << "Data file stream is not open." << std::endl;
+        std::cerr << "Data file stream is not open for writing." << std::endl;
         return 0;
     }
 
     // Prepare a vector to hold all data
     std::vector<char> buffer;
+    buffer.reserve(estimatedSize()); // Preallocate memory
 
     // Helper lambda to write data to buffer
     auto writeToBuffer = [&](const void* data, size_t size) {
@@ -227,9 +228,6 @@ size_t QNode::saveToDisk(std::fstream& outStream) {
     // Get total size of the data (excluding the size field)
     size_t dataSize = buffer.size();
 
-    // Remember the starting position
-    std::streampos startPos = outStream.tellp();
-
     // Write the size of the data
     outStream.write(reinterpret_cast<const char*>(&dataSize), sizeof(dataSize));
 
@@ -240,51 +238,24 @@ size_t QNode::saveToDisk(std::fstream& outStream) {
     return dataSize;
 }
 
-
 // Carica l'oggetto QNode da disco
-// qnode.cpp
-void QNode::loadFromDisk(std::fstream& inStream, std::streampos offset) {
+void QNode::loadFromDisk(std::fstream& inStream) {
     if (!inStream.is_open()) {
-        std::cerr << "Data file stream is not open." << std::endl;
+        std::cerr << "Data file stream is not open for reading." << std::endl;
         return;
     }
 
     // Clear any error flags
     inStream.clear();
 
-    // Seek to the offset
-    inStream.seekg(offset);
-
-    // Check if seek was successful
-    if (!inStream.good()) {
-        std::cerr << "Failed to seek to offset " << offset << std::endl;
-        return;
-    }
-
     // Read the size of the data
     size_t dataSize;
     inStream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
-
-    if (inStream.gcount() != sizeof(dataSize)) {
-        std::cerr << "Failed to read data size at offset " << offset << std::endl;
-        return;
-    }
-
-    // Bounds checking on dataSize
-    const size_t MAX_DATA_SIZE = 10 * 1024 * 1024; // 10 MB max
-    if (dataSize > MAX_DATA_SIZE) {
-        std::cerr << "Data size " << dataSize << " at offset " << offset << " exceeds maximum allowed size." << std::endl;
-        return;
-    }
 
     // Read the data into a buffer
     std::vector<char> buffer(dataSize);
     inStream.read(buffer.data(), dataSize);
 
-    if (inStream.gcount() != static_cast<std::streamsize>(dataSize)) {
-        std::cerr << "Failed to read data for node at offset " << offset << std::endl;
-        return;
-    }
 
     size_t pos = 0;
 
@@ -324,4 +295,21 @@ void QNode::loadFromDisk(std::fstream& inStream, std::streampos offset) {
     readFromBuffer(&coveredCount, sizeof(coveredCount));
     covered.resize(coveredCount);
     readFromBuffer(covered.data(), coveredCount * sizeof(long int));
+}
+
+
+size_t QNode::estimatedSize() const {
+    size_t size = 0;
+    size += sizeof(nodeID);
+    size += sizeof(parentID);
+    size += sizeof(size_t); // mbrSize
+    size += mbr.size() * sizeof(std::array<double, 2>);
+    size += sizeof(norm);
+    size += sizeof(size_t); // childrenCount
+    size += childrenIDs.size() * sizeof(long int);
+    size += sizeof(size_t); // halfspaceCount
+    size += halfspaces.size() * sizeof(long int);
+    size += sizeof(size_t); // coveredCount
+    size += covered.size() * sizeof(long int);
+    return size;
 }
