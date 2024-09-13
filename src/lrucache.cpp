@@ -11,18 +11,25 @@
 // Definizione della cache globale
 LRUCache globalCache(10000);
 
+// lrucache.cpp
 std::shared_ptr<QNode> LRUCache::get(int nodeID) {
+    // Check if node is in cache
     if (cache.find(nodeID) != cache.end()) {
         lruList.splice(lruList.begin(), lruList, cache[nodeID]);
         return cache[nodeID]->second;
     }
 
-    // Load from disk if not in cache
-    auto node = std::make_shared<QNode>();
-    std::string filePath = getFilePath(nodeID);
-    node->loadFromDisk(filePath);
-    add(node);
-    return node;
+    // Not in cache, load from disk
+    auto it = index.find(nodeID);
+    if (it != index.end()) {
+        auto node = std::make_shared<QNode>();
+        node->loadFromDisk(dataFile, it->second.offset);
+        add(node);
+        return node;
+    } else {
+        std::cerr << "Node with ID " << nodeID << " not found in index." << std::endl;
+        return nullptr;
+    }
 }
 
 void LRUCache::lockNode(int nodeID) {
@@ -35,23 +42,40 @@ void LRUCache::unlockNode(int nodeID) {
     lockedNodes.erase(nodeID);
 }
 
+// lrucache.cpp
 void LRUCache::add(std::shared_ptr<QNode> qnode) {
-
     int nodeID = qnode->getNodeID();
     invalidate(nodeID);
+
     if (cache.size() >= cacheSize) {
-        // Rimuovi il nodo meno recentemente usato
-        int evictID = lruList.back().first;  // Ottieni l'ID del nodo da rimuovere
-        auto evictNode = lruList.back().second;  // Ottieni il nodo da rimuovere
+        // Remove the least recently used node
+        int evictID = lruList.back().first;
+        auto evictNode = lruList.back().second;
         lruList.pop_back();
 
-        // Salva il nodo su disco prima di rimuoverlo dalla cache
-        evictNode->saveToDisk(getFilePath(evictID));
-        cache.erase(evictID);  // Rimuovi il nodo dalla cache
+        // Ensure we're at the end of the file
+        dataFile.clear(); // Clear any error flags
+        dataFile.seekp(0, std::ios::end);
+
+        // Get the current offset
+        std::streampos offset = dataFile.tellp();
+
+        // Save the node to the data file
+        evictNode->saveToDisk(dataFile);
+
+        // Flush the output to synchronize the stream
+        dataFile.flush();
+
+        // Update the index with the offset only
+        index[evictID] = {offset};
+
+        cache.erase(evictID);
     }
+
     lruList.emplace_front(nodeID, qnode);
     cache[nodeID] = lruList.begin();
 }
+
 
 void LRUCache::invalidate(int nodeID) {
     // Se il nodo è bloccato, non fare nulla
@@ -66,10 +90,6 @@ void LRUCache::invalidate(int nodeID) {
         lruList.erase(it);  // Rimuovi il nodo dalla lista LRU
         cache.erase(nodeID);  // Rimuovi il nodo dalla cache
     }
-}
-
-std::string LRUCache::getFilePath(int nodeID) {
-    return "node_" + std::to_string(nodeID) + ".dat";
 }
 
 // Metodo per cancellare i file .dat in batch
@@ -110,4 +130,43 @@ void LRUCache::cleanup() {
     for (auto& future : futures) {
         future.get();
     }
+}
+
+void LRUCache::loadIndex() {
+    std::ifstream in(indexFilePath, std::ios::binary);
+    if (!in.is_open()) {
+        // Index file doesn't exist; start with empty index
+        return;
+    }
+
+    size_t indexSize;
+    in.read(reinterpret_cast<char*>(&indexSize), sizeof(indexSize));
+
+    for (size_t i = 0; i < indexSize; ++i) {
+        int nodeID;
+        IndexEntry entry;
+        in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
+        in.read(reinterpret_cast<char*>(&entry.offset), sizeof(entry.offset));
+        index[nodeID] = entry;
+    }
+
+    in.close();
+}
+
+void LRUCache::saveIndex() {
+    std::ofstream out(indexFilePath, std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) {
+        std::cerr << "Failed to open index file for writing: " << indexFilePath << std::endl;
+        return;
+    }
+
+    size_t indexSize = index.size();
+    out.write(reinterpret_cast<const char*>(&indexSize), sizeof(indexSize));
+
+    for (const auto& [nodeID, entry] : index) {
+        out.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
+        out.write(reinterpret_cast<const char*>(&entry.offset), sizeof(entry.offset));
+    }
+
+    out.close();
 }

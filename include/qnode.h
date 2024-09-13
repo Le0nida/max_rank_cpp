@@ -61,8 +61,8 @@ public:
     void clearHalfspaces();
 
 
-    void saveToDisk(const std::string& filePath);           // Serializes the QNode to disk
-    void loadFromDisk(const std::string& filePath);         // Loads the QNode from disk
+    size_t saveToDisk(std::fstream& outStream);           // Serializes the QNode to disk
+    void loadFromDisk(std::fstream& inStream, std::streampos offset);         // Loads the QNode from disk
 
 private:
     long int nodeID;                        // ID univoco del nodo

@@ -46,8 +46,6 @@ void QNode::clearHalfspaces()
 {
     if (!halfspaces.empty()) {
         halfspaces.clear();
-    } else {
-        std::cerr << "Warning: Attempting to clear empty halfspaces." << std::endl;
     }
 }
 
@@ -183,80 +181,147 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
 
 
 // Serializza l'oggetto QNode su disco
-void QNode::saveToDisk(const std::string& filePath) {
-    std::ofstream out(filePath, std::ios::binary);
-    if (out.is_open()) {
-        // Serialize the nodeID and parentID
-        out.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
-        out.write(reinterpret_cast<const char*>(&parentID), sizeof(parentID));
-
-        // Serialize the MBR
-        size_t mbrSize = mbr.size();
-        out.write(reinterpret_cast<const char*>(&mbrSize), sizeof(mbrSize));
-        out.write(reinterpret_cast<const char*>(mbr.data()), mbrSize * sizeof(std::array<double, 2>));
-
-        // Serialize the norm flag
-        out.write(reinterpret_cast<const char*>(&norm), sizeof(norm));
-
-        // Serialize the children IDs
-        size_t childrenCount = childrenIDs.size();
-        out.write(reinterpret_cast<const char*>(&childrenCount), sizeof(childrenCount));
-        out.write(reinterpret_cast<const char*>(childrenIDs.data()), childrenCount * sizeof(long int));
-
-        // Serialize the halfspaces
-        size_t halfspaceCount = halfspaces.size();
-        out.write(reinterpret_cast<const char*>(&halfspaceCount), sizeof(halfspaceCount));
-        out.write(reinterpret_cast<const char*>(halfspaces.data()), halfspaceCount * sizeof(long int));
-
-        // Serialize the covered halfspaces
-        size_t coveredCount = covered.size();
-        out.write(reinterpret_cast<const char*>(&coveredCount), sizeof(coveredCount));
-        out.write(reinterpret_cast<const char*>(covered.data()), coveredCount * sizeof(long int));
-
-        out.close();
-    } else {
-        std::cerr << "Failed to open file for writing: " << filePath << std::endl;
+// qnode.cpp
+size_t QNode::saveToDisk(std::fstream& outStream) {
+    if (!outStream.is_open()) {
+        std::cerr << "Data file stream is not open." << std::endl;
+        return 0;
     }
+
+    // Prepare a vector to hold all data
+    std::vector<char> buffer;
+
+    // Helper lambda to write data to buffer
+    auto writeToBuffer = [&](const void* data, size_t size) {
+        const char* bytes = static_cast<const char*>(data);
+        buffer.insert(buffer.end(), bytes, bytes + size);
+    };
+
+    // Serialize the nodeID and parentID
+    writeToBuffer(&nodeID, sizeof(nodeID));
+    writeToBuffer(&parentID, sizeof(parentID));
+
+    // Serialize the MBR
+    size_t mbrSize = mbr.size();
+    writeToBuffer(&mbrSize, sizeof(mbrSize));
+    writeToBuffer(mbr.data(), mbrSize * sizeof(std::array<double, 2>));
+
+    // Serialize the norm flag
+    writeToBuffer(&norm, sizeof(norm));
+
+    // Serialize the children IDs
+    size_t childrenCount = childrenIDs.size();
+    writeToBuffer(&childrenCount, sizeof(childrenCount));
+    writeToBuffer(childrenIDs.data(), childrenCount * sizeof(long int));
+
+    // Serialize the halfspaces
+    size_t halfspaceCount = halfspaces.size();
+    writeToBuffer(&halfspaceCount, sizeof(halfspaceCount));
+    writeToBuffer(halfspaces.data(), halfspaceCount * sizeof(long int));
+
+    // Serialize the covered halfspaces
+    size_t coveredCount = covered.size();
+    writeToBuffer(&coveredCount, sizeof(coveredCount));
+    writeToBuffer(covered.data(), coveredCount * sizeof(long int));
+
+    // Get total size of the data (excluding the size field)
+    size_t dataSize = buffer.size();
+
+    // Remember the starting position
+    std::streampos startPos = outStream.tellp();
+
+    // Write the size of the data
+    outStream.write(reinterpret_cast<const char*>(&dataSize), sizeof(dataSize));
+
+    // Write the data itself
+    outStream.write(buffer.data(), dataSize);
+
+    // Return the size of the data only (excluding the size field)
+    return dataSize;
 }
 
 
 // Carica l'oggetto QNode da disco
-void QNode::loadFromDisk(const std::string& filePath) {
-    std::ifstream in(filePath, std::ios::binary);
-    if (in.is_open()) {
-        // Deserialize the nodeID and parentID
-        in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
-        in.read(reinterpret_cast<char*>(&parentID), sizeof(parentID));
-
-        // Deserialize the MBR
-        size_t mbrSize;
-        in.read(reinterpret_cast<char*>(&mbrSize), sizeof(mbrSize));
-        mbr.resize(mbrSize);
-        in.read(reinterpret_cast<char*>(mbr.data()), mbrSize * sizeof(std::array<double, 2>));
-
-        // Deserialize the norm flag
-        in.read(reinterpret_cast<char*>(&norm), sizeof(norm));
-
-        // Deserialize the children IDs
-        size_t childrenCount;
-        in.read(reinterpret_cast<char*>(&childrenCount), sizeof(childrenCount));
-        childrenIDs.resize(childrenCount);
-        in.read(reinterpret_cast<char*>(childrenIDs.data()), childrenCount * sizeof(long int));
-
-        // Deserialize the halfspaces
-        size_t halfspaceCount;
-        in.read(reinterpret_cast<char*>(&halfspaceCount), sizeof(halfspaceCount));
-        halfspaces.resize(halfspaceCount);
-        in.read(reinterpret_cast<char*>(halfspaces.data()), halfspaceCount * sizeof(long int));
-
-        // Deserialize the covered halfspaces
-        size_t coveredCount;
-        in.read(reinterpret_cast<char*>(&coveredCount), sizeof(coveredCount));
-        covered.resize(coveredCount);
-        in.read(reinterpret_cast<char*>(covered.data()), coveredCount * sizeof(long int));
-
-        in.close();
-    } else {
-        std::cerr << "Failed to open file for reading: " << filePath << std::endl;
+// qnode.cpp
+void QNode::loadFromDisk(std::fstream& inStream, std::streampos offset) {
+    if (!inStream.is_open()) {
+        std::cerr << "Data file stream is not open." << std::endl;
+        return;
     }
+
+    // Clear any error flags
+    inStream.clear();
+
+    // Seek to the offset
+    inStream.seekg(offset);
+
+    // Check if seek was successful
+    if (!inStream.good()) {
+        std::cerr << "Failed to seek to offset " << offset << std::endl;
+        return;
+    }
+
+    // Read the size of the data
+    size_t dataSize;
+    inStream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
+
+    if (inStream.gcount() != sizeof(dataSize)) {
+        std::cerr << "Failed to read data size at offset " << offset << std::endl;
+        return;
+    }
+
+    // Bounds checking on dataSize
+    const size_t MAX_DATA_SIZE = 10 * 1024 * 1024; // 10 MB max
+    if (dataSize > MAX_DATA_SIZE) {
+        std::cerr << "Data size " << dataSize << " at offset " << offset << " exceeds maximum allowed size." << std::endl;
+        return;
+    }
+
+    // Read the data into a buffer
+    std::vector<char> buffer(dataSize);
+    inStream.read(buffer.data(), dataSize);
+
+    if (inStream.gcount() != static_cast<std::streamsize>(dataSize)) {
+        std::cerr << "Failed to read data for node at offset " << offset << std::endl;
+        return;
+    }
+
+    size_t pos = 0;
+
+    // Helper lambda to read data from buffer
+    auto readFromBuffer = [&](void* data, size_t size) {
+        memcpy(data, buffer.data() + pos, size);
+        pos += size;
+    };
+
+    // Deserialize the nodeID and parentID
+    readFromBuffer(&nodeID, sizeof(nodeID));
+    readFromBuffer(&parentID, sizeof(parentID));
+
+    // Deserialize the MBR
+    size_t mbrSize;
+    readFromBuffer(&mbrSize, sizeof(mbrSize));
+    mbr.resize(mbrSize);
+    readFromBuffer(mbr.data(), mbrSize * sizeof(std::array<double, 2>));
+
+    // Deserialize the norm flag
+    readFromBuffer(&norm, sizeof(norm));
+
+    // Deserialize the children IDs
+    size_t childrenCount;
+    readFromBuffer(&childrenCount, sizeof(childrenCount));
+    childrenIDs.resize(childrenCount);
+    readFromBuffer(childrenIDs.data(), childrenCount * sizeof(long int));
+
+    // Deserialize the halfspaces
+    size_t halfspaceCount;
+    readFromBuffer(&halfspaceCount, sizeof(halfspaceCount));
+    halfspaces.resize(halfspaceCount);
+    readFromBuffer(halfspaces.data(), halfspaceCount * sizeof(long int));
+
+    // Deserialize the covered halfspaces
+    size_t coveredCount;
+    readFromBuffer(&coveredCount, sizeof(coveredCount));
+    covered.resize(coveredCount);
+    readFromBuffer(covered.data(), coveredCount * sizeof(long int));
 }
