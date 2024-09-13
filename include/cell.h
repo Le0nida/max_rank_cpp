@@ -14,14 +14,14 @@
 
 class Cell {
 public:
-    Cell(int order, const std::string& mask, const std::vector<HalfSpace>& covered, const std::vector<HalfSpace>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr, const Point& feasible_pnt);
+    Cell(int order, const std::string& mask, const std::vector<long>& covered, const std::vector<long>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr, const Point& feasible_pnt);
 
     bool issingular() const;
 
     int order;
     std::string mask;
-    std::vector<HalfSpace> covered;
-    std::vector<HalfSpace> halfspaces;
+    std::vector<long> covered;
+    std::vector<long> halfspaces;
     std::vector<std::array<double, 2>> leaf_mbr;
     Point feasible_pnt;
 };

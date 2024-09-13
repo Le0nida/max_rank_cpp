@@ -53,8 +53,8 @@ void QNode::clearHalfspaces()
 
 
 // Retrieves the covering halfspaces by traversing back up the tree.
-std::vector<HalfSpace> QNode::getCovered() const{
-    std::vector<HalfSpace> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
+std::vector<long int> QNode::getCovered() const{
+    std::vector<long int> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
     std::shared_ptr<QNode> ref = globalCache.get(parentID);;
 
     // Traverse back up the tree to accumulate the covered halfspaces from parent nodes.
@@ -67,7 +67,7 @@ std::vector<HalfSpace> QNode::getCovered() const{
 }
 
 // Inserts halfspaces into the node and distributes them to children nodes if necessary.
-void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<HalfSpace>& halfspaces) {
+void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<long int>& halfspaces) {
     const size_t mbr_size = mbr.size();
     double incr[mbr_size];
     double half[mbr_size];
@@ -100,8 +100,9 @@ void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 
     double coeff[num_halfspaces][mbr_size];
     double known[num_halfspaces];
     for (size_t i = 0; i < num_halfspaces; ++i) {
-        memcpy(coeff[i], halfspaces[i].coeff.data(), mbr_size * sizeof(double));
-        known[i] = halfspaces[i].known;
+        auto hs = halfspaceCache->get(halfspaces[i]);
+        memcpy(coeff[i], hs->coeff.data(), mbr_size * sizeof(double));
+        known[i] = hs->known;
     }
 
     // Determina la posizione dei punti relativi a ciascuna halfspace
@@ -200,21 +201,17 @@ void QNode::saveToDisk(const std::string& filePath) {
         // Serialize the children IDs
         size_t childrenCount = childrenIDs.size();
         out.write(reinterpret_cast<const char*>(&childrenCount), sizeof(childrenCount));
-        out.write(reinterpret_cast<const char*>(childrenIDs.data()), childrenCount * sizeof(int));
+        out.write(reinterpret_cast<const char*>(childrenIDs.data()), childrenCount * sizeof(long int));
 
         // Serialize the halfspaces
         size_t halfspaceCount = halfspaces.size();
         out.write(reinterpret_cast<const char*>(&halfspaceCount), sizeof(halfspaceCount));
-        for (const auto& hs : halfspaces) {
-            hs.saveToDisk(out);  // Usa il metodo di serializzazione di HalfSpace
-        }
+        out.write(reinterpret_cast<const char*>(halfspaces.data()), halfspaceCount * sizeof(long int));
 
         // Serialize the covered halfspaces
         size_t coveredCount = covered.size();
         out.write(reinterpret_cast<const char*>(&coveredCount), sizeof(coveredCount));
-        for (const auto& hs : covered) {
-            hs.saveToDisk(out);  // Usa il metodo di serializzazione di HalfSpace
-        }
+        out.write(reinterpret_cast<const char*>(covered.data()), coveredCount * sizeof(long int));
 
         out.close();
     } else {
@@ -244,23 +241,19 @@ void QNode::loadFromDisk(const std::string& filePath) {
         size_t childrenCount;
         in.read(reinterpret_cast<char*>(&childrenCount), sizeof(childrenCount));
         childrenIDs.resize(childrenCount);
-        in.read(reinterpret_cast<char*>(childrenIDs.data()), childrenCount * sizeof(int));
+        in.read(reinterpret_cast<char*>(childrenIDs.data()), childrenCount * sizeof(long int));
 
         // Deserialize the halfspaces
         size_t halfspaceCount;
         in.read(reinterpret_cast<char*>(&halfspaceCount), sizeof(halfspaceCount));
         halfspaces.resize(halfspaceCount);
-        for (auto& hs : halfspaces) {
-            hs.loadFromDisk(in);  // Usa il metodo di deserializzazione di HalfSpace
-        }
+        in.read(reinterpret_cast<char*>(halfspaces.data()), halfspaceCount * sizeof(long int));
 
         // Deserialize the covered halfspaces
         size_t coveredCount;
         in.read(reinterpret_cast<char*>(&coveredCount), sizeof(coveredCount));
         covered.resize(coveredCount);
-        for (auto& hs : covered) {
-            hs.loadFromDisk(in);  // Usa il metodo di deserializzazione di HalfSpace
-        }
+        in.read(reinterpret_cast<char*>(covered.data()), coveredCount * sizeof(long int));
 
         in.close();
     } else {

@@ -13,7 +13,7 @@
 class QTree {
 public:
     QTree(int dims, int maxhsnode);
-    void inserthalfspaces(const std::vector<HalfSpace>& halfspaces);
+    void inserthalfspaces(const std::vector<long int>& halfspaces);
     std::vector<std::shared_ptr<QNode>> getleaves();
 
 private:

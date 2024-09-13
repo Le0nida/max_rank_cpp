@@ -12,8 +12,8 @@
 #include <src/Highs.h>
 
 // Constructor for Cell class remains unchanged
-Cell::Cell(int order, const std::string& mask, const std::vector<HalfSpace>& covered,
-           const std::vector<HalfSpace>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr,
+Cell::Cell(int order, const std::string& mask, const std::vector<long>& covered,
+           const std::vector<long>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr,
            const Point& feasible_pnt)
     : order(order), mask(mask), covered(covered), halfspaces(halfspaces), leaf_mbr(leaf_mbr), feasible_pnt(feasible_pnt)
 {
@@ -22,7 +22,7 @@ Cell::Cell(int order, const std::string& mask, const std::vector<HalfSpace>& cov
 bool Cell::issingular() const
 {
     return std::all_of(covered.begin(), covered.end(),
-                       [](const HalfSpace& hs) { return hs.arr == Arrangement::SINGULAR; });
+                       [](long int id) { return halfspaceCache->get(id)->arr == Arrangement::SINGULAR; });
 }
 
 // Constructor for Interval class remains unchanged
@@ -275,7 +275,7 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
 {
     std::vector<Cell> cells;
     int dims = leaf.getMBR().size();
-    std::vector<HalfSpace> leaf_covered = leaf.getCovered();
+    std::vector<long int> leaf_covered = leaf.getCovered();
 
     auto halfspaces = leaf.getHalfspaces();
     if (halfspaces.empty()) {
@@ -285,7 +285,7 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
             feasible_coords[i] = (mbr[i][0] + mbr[i][1]) / 2.0;
         }
         Point feasible_pnt(feasible_coords);
-        std::vector<HalfSpace> empty_halfspaces;
+        std::vector<long> empty_halfspaces;
         return {Cell(0, "", leaf_covered, empty_halfspaces, mbr, feasible_pnt)};
     }
 
@@ -305,19 +305,19 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
         bounds[d] = {leaf.getMBR()[d][0], leaf.getMBR()[d][1]};  // Limiti per le prime dims variabili
     }
     bounds[dims] = {0, std::numeric_limits<double>::infinity()}; // Limite per la variabile slack
-
     for (const auto& hamstr : hamstrings) {
         for (int b = 0; b < hamstr.size(); ++b) {
+            auto hs = halfspaceCache->get(halfspaces[b]);
             if (hamstr[b] == '0') {
                 for (int i = 0; i < dims; ++i) {
-                    A_ub[b][i] = -halfspaces[b].coeff[i];
+                    A_ub[b][i] = -hs->coeff[i];
                 }
-                b_ub[b] = -halfspaces[b].known;
+                b_ub[b] = -hs->known;
             } else {
                 for (int i = 0; i < dims; ++i) {
-                    A_ub[b][i] = halfspaces[b].coeff[i];
+                    A_ub[b][i] = hs->coeff[i];
                 }
-                b_ub[b] = leaf.getHalfspaces()[b].known;
+                b_ub[b] = hs->known;
             }
         }
 

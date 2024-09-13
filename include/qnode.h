@@ -5,6 +5,7 @@
 #ifndef QNODE_H
 #define QNODE_H
 
+#include <utility>
 #include <vector>
 #include <array>
 #include <memory>
@@ -21,29 +22,9 @@ public:
     QNode& operator=(const QNode&) = delete;    // Disabilita l'assegnazione tramite copia
 
 
-    QNode(QNode&& other) noexcept
-    : nodeID(other.nodeID),
-      parentID(other.parentID),
-      mbr(std::move(other.mbr)),
-      norm(other.norm),
-      order(other.order),
-      childrenIDs(std::move(other.childrenIDs)),
-      covered(std::move(other.covered)),
-      halfspaces(std::move(other.halfspaces)) {}
+    QNode(QNode&& other) noexcept {}
 
-    QNode& operator=(QNode&& other) noexcept {
-        if (this != &other) {
-            nodeID = other.nodeID;
-            parentID = other.parentID;
-            mbr = std::move(other.mbr);
-            norm = other.norm;
-            order = other.order;
-            childrenIDs = std::move(other.childrenIDs);
-            covered = std::move(other.covered);
-            halfspaces = std::move(other.halfspaces);
-        }
-        return *this;
-    }
+    QNode& operator=(QNode&& other) noexcept {return *this;}
 
 
     // Metodo per ottenere l'ID del nodo
@@ -60,10 +41,10 @@ public:
     void setOrder() const;
 
     // Get the covered halfspaces
-    std::vector<HalfSpace> getCovered() const;
+    std::vector<long int> getCovered() const;
 
     // Insert halfspaces into the node
-    void insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<HalfSpace>& halfspaces);
+    void insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<long int>& halfspaces);
 
     // Getters and setters
     const std::vector<std::array<double, 2>>& getMBR() const { return mbr; }
@@ -72,29 +53,28 @@ public:
     size_t getOrder() const { return order; }
 
     // Get the children IDs instead of actual nodes
-    const std::vector<int>& getChildrenIDs() const { return childrenIDs; }
+    const std::vector<long int>& getChildrenIDs() const { return childrenIDs; }
     void addChildID(int childID) { childrenIDs.push_back(childID); }
 
-    const std::vector<HalfSpace>& getHalfspaces() const { return halfspaces; }
-    void setHalfspaces(const std::vector<HalfSpace>& halfspaces) { this->halfspaces = halfspaces; }
+    const std::vector<long int>& getHalfspaces() const { return halfspaces; }
+    void setHalfspaces(std::vector<long int> halfspaces) { this->halfspaces = std::move(halfspaces); };
     void clearHalfspaces();
 
-    // Serializes the QNode to disk
-    void saveToDisk(const std::string& filePath);
 
-    // Loads the QNode from disk
-    void loadFromDisk(const std::string& filePath);
+    void saveToDisk(const std::string& filePath);           // Serializes the QNode to disk
+    void loadFromDisk(const std::string& filePath);         // Loads the QNode from disk
 
 private:
-    int nodeID{};  // ID univoco del nodo
-    int parentID{};             // ID del nodo genitore
+    long int nodeID;                        // ID univoco del nodo
+    long int parentID;                      // ID del nodo genitore
 
-    std::vector<std::array<double, 2>> mbr;  // Minimum bounding region
-    bool norm{};  // Normalization flag
-    mutable size_t order{};  // Order of the node
-    std::vector<int> childrenIDs;
-    std::vector<HalfSpace> covered;  // Covered halfspaces
-    std::vector<HalfSpace> halfspaces;  // Halfspaces in the node
+    std::vector<std::array<double, 2>> mbr; // Minimum bounding region
+    bool norm;                              // Normalization flag
+    mutable size_t order{};                 // Order of the node
+
+    std::vector<long int> childrenIDs;
+    std::vector<long int> covered;          // Covered halfspaces
+    std::vector<long int> halfspaces;       // Halfspaces in the node
 };
 
 #endif //QNODE_H

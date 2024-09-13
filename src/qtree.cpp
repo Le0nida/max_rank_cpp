@@ -69,7 +69,7 @@ void QTree::splitnode(std::shared_ptr<QNode> node) {
 }
 
 // Insert halfspaces into the tree
-void QTree::inserthalfspaces(const std::vector<HalfSpace>& halfspaces) {
+void QTree::inserthalfspaces(const std::vector<long int>& halfspaces) {
     std::vector<int> to_search = {root->getNodeID()};  // Memorizza solo gli ID dei nodi
     root->setHalfspaces(halfspaces);
 
@@ -77,37 +77,17 @@ void QTree::inserthalfspaces(const std::vector<HalfSpace>& halfspaces) {
         int currentID = to_search.back();
         to_search.pop_back();
 
-        std::shared_ptr<QNode> current;
-        if (currentID == 0)
-        {
-            current = root;
-        }
-        else
-        {
-            current = globalCache.get(currentID);  // Recupera il nodo dalla cache
-        }
+        std::shared_ptr<QNode> current = globalCache.get(currentID);  // Recupera il nodo dalla cache
 
-        // Verifica che il nodo esista
-        if (!current) {
-            std::cerr << "Error: Node with ID " << currentID << " is null." << std::endl;
-            continue;
-        }
         // Inserisce gli halfspaces e pulisce il nodo
         current->insertHalfspaces(masks, current->getHalfspaces());
         current->clearHalfspaces();
 
-
         // Copia locale sicura degli ID dei figli
-        std::vector<int> childrenIDs = current->getChildrenIDs();
+        std::vector<long int> childrenIDs = current->getChildrenIDs();
 
         for (const auto childID : childrenIDs) {
             std::shared_ptr<QNode> child = globalCache.get(childID);
-
-            // Verifica che il figlio esista
-            if (!child) {
-                std::cerr << "Error: Child with ID " << childID << " is null." << std::endl;
-                continue;
-            }
 
             if (child->isNorm()) {
                 if (!child->isLeaf() && !child->getHalfspaces().empty()) {
@@ -134,12 +114,11 @@ std::vector<std::shared_ptr<QNode>> QTree::getleaves() {
 
         globalCache.lockNode(current->getNodeID());  // Blocca il nodo durante l'elaborazione
 
-        std::vector<int> childrenIDs = current->getChildrenIDs();  // Copia locale sicura
-
         if (current->isNorm()) {
             if (current->isLeaf()) {
                 leaves.push_back(current);  // Se è una foglia, aggiungila alla lista
             } else {
+                std::vector<long int> childrenIDs = current->getChildrenIDs();  // Copia locale sicura
                 for (const auto childID : childrenIDs) {
                     std::shared_ptr<QNode> child = globalCache.get(childID);
 

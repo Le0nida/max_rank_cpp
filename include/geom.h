@@ -15,6 +15,11 @@ public:
     std::vector<double> coord;
     int dims;
 
+    // Operatore di uguaglianza per confrontare due punti
+    bool operator==(const Point& other) const {
+        return coord == other.coord;  // Confronta i vettori di coordinate
+    }
+
     // Serializza l'oggetto Point su disco
     void saveToDisk(std::ofstream& out) const {
         out.write(reinterpret_cast<const char*>(&id), sizeof(id));
