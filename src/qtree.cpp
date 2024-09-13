@@ -127,10 +127,7 @@ std::vector<std::shared_ptr<QNode>> QTree::getleaves() {
                         std::cerr << "Error: Child with ID " << childID << " is null." << std::endl;
                         continue;
                     }
-
-                    globalCache.lockNode(childID);  // Blocca il figlio durante l'elaborazione
                     to_search.push_back(child);
-                    globalCache.unlockNode(childID);  // Sblocca il figlio dopo l'elaborazione
                 }
             }
         }

@@ -9,15 +9,30 @@
 #include <iostream>
 #include <unordered_map>
 #include <list>
+#include <map>
 #include <memory>  // Include per std::unique_ptr
 #include <mutex>
 #include <unordered_set>
 #include <thread>
 
 #include "qnode.h"
+#include "utils.h"
 
 class LRUCache {
 private:
+    struct CacheNode {
+        int nodeID;
+        std::shared_ptr<QNode> qnode;
+        int frequency;
+    };
+
+    // Map frequency to a list of CacheNodes
+    std::map<int, std::list<CacheNode>> freqMap;
+
+    // Map nodeID to iterator pointing to the CacheNode in freqMap
+    std::unordered_map<int, std::list<CacheNode>::iterator> nodeMap;
+
+
     // Map of nodeID to std::unique_ptr of QNode
     std::unordered_map<int, std::list<std::pair<int, std::shared_ptr<QNode>>>::iterator> cache;
 
@@ -56,7 +71,30 @@ private:
     const size_t indexSaveThreshold = 1000; // Save index every 1000 updates
 
 public:
-    explicit LRUCache(int size) : cacheSize(size) {
+    explicit LRUCache() {
+        const int MIN_CACHE_SIZE = 1000;
+        const int MAX_CACHE_SIZE = 1000000;
+
+        // Calculate cache size based on available memory
+        size_t availableMemory = getAvailableMemory();
+        if (availableMemory == 0) {
+            std::cerr << "Failed to retrieve available memory. Using default cache size of 10,000." << std::endl;
+            cacheSize = 10000;
+        } else {
+            // Use 10% of available memory for cache
+            size_t cacheMemoryUsage = availableMemory / 10;
+            // Estimate the size of a QNode in memory (this is a rough estimate)
+            size_t estimatedNodeSize = sizeof(QNode) + 1024; // Adjust as necessary
+            cacheSize = static_cast<int>(cacheMemoryUsage / estimatedNodeSize);
+
+            if (cacheSize < MIN_CACHE_SIZE) {
+                cacheSize = MIN_CACHE_SIZE;
+            } else if (cacheSize > MAX_CACHE_SIZE) {
+                cacheSize = MAX_CACHE_SIZE;
+            }
+            std::cout << "Cache size set to " << cacheSize << " based on available memory." << std::endl;
+        }
+
         // Open the data file in read-write mode
         dataFile.open(dataFilePath, std::ios::in | std::ios::out | std::ios::binary);
         if (!dataFile.is_open()) {

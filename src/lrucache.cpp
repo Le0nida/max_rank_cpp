@@ -9,7 +9,7 @@
 #include <future>
 
 // Definizione della cache globale
-LRUCache globalCache(10000);
+LRUCache globalCache;
 
 std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     // Check if node is in cache
