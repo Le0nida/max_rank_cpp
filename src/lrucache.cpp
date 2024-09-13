@@ -74,6 +74,15 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
         // Update the index with the offset
         index[evictID] = {offset};
 
+        // Increment the index update counter
+        indexUpdateCounter++;
+
+        // Save the index periodically
+        if (indexUpdateCounter >= indexSaveThreshold) {
+            saveIndex();
+            indexUpdateCounter = 0;
+        }
+
         cache.erase(evictID);
     }
 

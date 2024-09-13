@@ -52,6 +52,9 @@ private:
     void loadIndex();
     void saveIndex();
 
+    size_t indexUpdateCounter = 0;
+    const size_t indexSaveThreshold = 1000; // Save index every 1000 updates
+
 public:
     explicit LRUCache(int size) : cacheSize(size) {
         // Open the data file in read-write mode
