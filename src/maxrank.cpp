@@ -21,7 +21,8 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
     QTree qt(p.dims - 1, 10);
     std::vector<Point> dominators = getdominators(data, p);
     std::vector<Point> incomp = getincomparables(data, p);
-    std::vector<std::pair<int, int>> hsSINGULAR;
+
+    qt.clearHalfspaceBeenInserted();
 
     // Inizializzo la cache per gli halfspaces
     initializeCache(data.size());

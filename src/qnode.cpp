@@ -10,13 +10,21 @@
 #include "lrucache.h"
 #include <numeric>
 #include "geom.h"
+#include "qtree.h"
+
+int normalizedMax = 1;
+int maxCapacity = 10; // sarebbe maxhsnode
 
 // Counter globale per assegnare ID unici (opzione semplice)
 int globalNodeID = 0;
 
 // Constructor for QNode, initializes the member variables.
 QNode::QNode(int parentID, const std::vector<std::array<double, 2>>& mbr)
-    : mbr(mbr), norm(true), order(0), parentID(parentID), nodeID(globalNodeID++){}
+    : mbr(mbr), leaf(true), norm(true), order(0), parentID(parentID), nodeID(globalNodeID++){}
+
+QNode::QNode()
+    : mbr({}), leaf(true), norm(true), order(0), parentID(0), nodeID(globalNodeID++){}
+
 
 // Checks if the node is the root of the tree.
 bool QNode::isRoot() const {
@@ -25,7 +33,7 @@ bool QNode::isRoot() const {
 
 // Checks if the node is a leaf (i.e., has no children).
 bool QNode::isLeaf() const {
-    return childrenIDs.empty();
+    return leaf || childrenIDs.empty();
 }
 
 // Computes the order of the node by traversing back up the tree.
@@ -64,121 +72,171 @@ std::vector<long int> QNode::getCovered() const{
     return coveredSpaces;
 }
 
-// Inserts halfspaces into the node and distributes them to children nodes if necessary.
-void QNode::insertHalfspaces(const std::array<std::vector<std::vector<double>>, 2>& masks, const std::vector<long int>& halfspaces) {
-    const size_t mbr_size = mbr.size();
-    double incr[mbr_size];
-    double half[mbr_size];
+PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double hs_known, const std::vector<std::array<double, 2>>& mbr) {
+    double minVal = 0.0;
+    double maxVal = 0.0;
+    size_t dims = hs_coeff.size();
 
-    // Precalcolo di incr e half
-    for (size_t i = 0; i < mbr_size; ++i) {
-        incr[i] = (mbr[i][1] - mbr[i][0]) / 2.0;
-        half[i] = (mbr[i][0] + mbr[i][1]) / 2.0;
-    }
-
-    if (masks.empty()) {
-        std::cout << "Masks are empty, exiting function." << std::endl;
-        return;
-    }
-    const auto& ptsMask = masks[0];  // Point masks for halfspace insertion
-    const auto& ndsMask = masks[1];  // Node masks for halfspace insertion
-
-    const size_t num_pts = ptsMask.size();
-    const size_t num_halfspaces = halfspaces.size();
-
-    // Calcola i punti per le maschere
-    double pts[num_pts][mbr_size];
-    for (size_t i = 0; i < num_pts; ++i) {
-        for (size_t j = 0; j < mbr_size; ++j) {
-            pts[i][j] = incr[j] * ptsMask[i][j] + half[j];
+    // Compute the minimum and maximum values of the halfspace over the MBR
+    for (size_t i = 0; i < dims; ++i) {
+        double coeff = hs_coeff[i];
+        if (coeff >= 0) {
+            minVal += coeff * mbr[i][0]; // Use minimum MBR value for positive coefficients
+            maxVal += coeff * mbr[i][1]; // Use maximum MBR value for positive coefficients
+        } else {
+            minVal += coeff * mbr[i][1]; // Use maximum MBR value for negative coefficients
+            maxVal += coeff * mbr[i][0]; // Use minimum MBR value for negative coefficients
         }
     }
 
-    // Estrai coefficienti e valori noti dalle halfspaces in array statici
-    double coeff[num_halfspaces][mbr_size];
-    double known[num_halfspaces];
-    for (size_t i = 0; i < num_halfspaces; ++i) {
-        auto hs = halfspaceCache->get(halfspaces[i]);
-        memcpy(coeff[i], hs->coeff.data(), mbr_size * sizeof(double));
-        known[i] = hs->known;
-    }
-
-    // Determina la posizione dei punti relativi a ciascuna halfspace
-    int pos[num_pts][num_halfspaces];
-    for (size_t i = 0; i < num_pts; ++i) {
-        for (size_t j = 0; j < num_halfspaces; ++j) {
-            double dot_product = 0.0;
-            for (size_t k = 0; k < mbr_size; ++k) {
-                dot_product += pts[i][k] * coeff[j][k];
-            }
-            pos[i][j] = (dot_product < known[j]) ? static_cast<int>(Position::IN) : static_cast<int>(Position::OUT);
-        }
-    }
-
-    // Distribuire le halfspaces ai nodi figli in base alle loro posizioni
-    for (size_t hs = 0; hs < num_halfspaces; ++hs) {
-        std::vector<size_t> rel;  // Posizioni relative dove le posizioni dei punti differiscono
-        for (size_t i = 1; i < num_pts; ++i) {  // Partendo da 1, evitiamo il confronto con sé stessi
-            if (pos[i][hs] != pos[0][hs]) {
-                rel.push_back(i);
-            }
-        }
-
-        // Determina quali nodi figli la halfspace attraversa
-        std::vector<size_t> cross;
-        for (size_t j = 0; j < ndsMask[0].size(); ++j) {
-            bool crosses = false;
-            for (const auto& r : rel) {
-                if (ndsMask[r][j] > 0) {
-                    crosses = true;
-                    break;
-                }
-            }
-            if (crosses) {
-                cross.push_back(j);
-            }
-        }
-
-        // Aggiungi halfspace ai nodi figli appropriati
-        for (const auto& c : cross) {
-            if (c < childrenIDs.size()) {
-                int childID = childrenIDs[c];
-                auto child = globalCache.get(childID);  // Recupera il figlio dalla cache usando l'ID
-                child->halfspaces.push_back(halfspaces[hs]);  // Inserisci l'halfspace nel nodo figlio
-            } else {
-                std::cerr << "Index out of bounds: " << c << " >= " << childrenIDs.size() << std::endl;
-                return;
-            }
-        }
-
-        // Aggiungi halfspace alla lista covered dei nodi figli appropriati se non attraversa
-        if (pos[0][hs] == static_cast<int>(Position::IN)) {
-            int sum_mask[ndsMask[0].size()] = {0};
-
-            // Somma i valori in nds_mask[rel]
-            for (size_t r : rel) {
-                for (size_t j = 0; j < ndsMask[r].size(); ++j) {
-                    sum_mask[j] += ndsMask[r][j];
-                }
-            }
-
-            // Trova gli indici dove la somma è zero
-            for (size_t nc = 0; nc < ndsMask[0].size(); ++nc) {
-                if (sum_mask[nc] == 0) {
-                    if (nc < childrenIDs.size()) {
-                        int childID = childrenIDs[nc];
-                        std::shared_ptr<QNode> child = globalCache.get(childID);  // Recupera il figlio dalla cache usando l'ID
-                        child->covered.push_back(halfspaces[hs]);  // Aggiungi alla lista covered
-                    } else {
-                        std::cerr << "Index out of bounds: " << nc << " >= " << childrenIDs.size() << std::endl;
-                        return;
-                    }
-                }
-            }
-        }
+    // Compare min and max values with hs_known to determine position
+    if (maxVal < hs_known) {
+        // The entire MBR lies below the halfspace
+        return PositionHS::BELOW;
+    } else if (minVal > hs_known) {
+        // The entire MBR lies above the halfspace
+        return PositionHS::ABOVE;
+    } else {
+        // The halfspace overlaps with the MBR
+        return PositionHS::OVERLAPPED;
     }
 }
 
+// Inserts halfspaces into the node and distributes them to children nodes if necessary.
+void QNode::insertHalfspaces(const std::vector<long int>& halfspaces) {
+    size_t num_halfspaces = halfspaces.size();
+    for (size_t i = 0; i < num_halfspaces; ++i) {
+        long int hsID = halfspaces[i];
+        auto hs = halfspaceCache->get(hsID);
+        const std::vector<double>& hs_coeff = hs->coeff;
+        double hs_known = hs->known;
+
+        // Determine the PositionHS of the halfspace relative to the node's MBR
+        PositionHS pos = MbrVersusHalfSpace(hs_coeff, hs_known, mbr);
+
+        if (pos == PositionHS::BELOW) {
+            // Halfspace lies entirely below the MBR, store in covered halfspaces
+            covered.push_back(hsID);
+        } else if (pos == PositionHS::OVERLAPPED) {
+            if (isLeaf()) {
+                // Node is a leaf, store in intersectedHalfspaces
+                this->halfspaces.push_back(hsID);
+
+                // Check if we need to split the node
+                if (this->halfspaces.size() > maxCapacity) {
+                    // Split the node
+                    splitNode();
+
+                    // Redistribute the intersected halfspaces among the children
+                    for (int childID : childrenIDs) {
+                        auto child = globalCache.get(childID);
+                        child->insertHalfspaces(this->halfspaces);
+                    }
+                    // Clear the intersected halfspaces from this node
+                    this->halfspaces.clear();
+                }
+            } else {
+                // Node is not a leaf, pass the halfspace to children
+                for (int childID : childrenIDs) {
+                    auto child = globalCache.get(childID);
+                    child->insertHalfspaces({hsID}); // Passing single halfspace as vector
+                }
+            }
+        }/* else if (pos == PositionHS::ABOVE) {
+            // The halfspace lies entirely above the MBR, do nothing
+            continue;
+        }*/
+    }
+}
+
+// Split the given node
+void QNode::splitNode() {
+    /*if (level >= maxLevel) {
+        // Do not split if maximum level reached
+        return;
+    }*/
+
+    if (!isNorm()) {
+        // Do not split if the node is invalid
+        return;
+    }
+
+    // Generate subdivisions (child MBRs)
+    std::vector<std::vector<std::array<double, 2>>> subDivs = genSubdivisions();
+
+    childrenIDs.clear(); // Clear any existing children IDs
+
+    for (const auto& child_mbr : subDivs) {
+        // Create new child node
+        auto child = std::make_shared<QNode>(/* appropriate parameters */);
+        //child->level = level + 1;
+        child->parentID = nodeID;
+        child->mbr = child_mbr;
+
+        // Check if the child node is valid
+        if (child->checkNodeValidity()) {
+            child->setNorm(true); // Set node as valid
+            childrenIDs.push_back(child->getNodeID()); // Add child ID to list
+            globalCache.add(child); // Add child to cache
+        } else {
+            // Node is invalid, do not add to children
+            continue;
+        }
+    }
+
+    setLeaf(false); // This node is no longer a leaf
+}
+
+std::vector<std::vector<std::array<double, 2>>> QNode::genSubdivisions() {
+    size_t dims = mbr.size();
+    std::vector<std::vector<std::array<double, 2>>> subdivisions;
+
+    size_t numOfSubdivisions = 1 << dims; // 2^dims combinations
+
+    for (int i = 0; i < numOfSubdivisions; ++i) {
+        std::vector<std::array<double, 2>> child_mbr(dims);
+
+        for (int j = 0; j < dims; ++j) {
+            double mid = (mbr[j][0] + mbr[j][1]) / 2.0; // Midpoint of MBR in dimension j
+
+            if (i & (1 << j)) {
+                // Use upper half in dimension j
+                child_mbr[j][0] = mid;
+                child_mbr[j][1] = mbr[j][1];
+            } else {
+                // Use lower half in dimension j
+                child_mbr[j][0] = mbr[j][0];
+                child_mbr[j][1] = mid;
+            }
+        }
+
+        subdivisions.push_back(child_mbr);
+    }
+
+    return subdivisions;
+}
+
+bool QNode::checkNodeValidity() {
+    size_t dims = mbr.size();
+    size_t num_vertices = 1 << dims; // Number of vertices is 2^dims
+
+    for (size_t i = 0; i < num_vertices; ++i) {
+        double sum = 0.0;
+
+        // Generate the coordinates of the vertex
+        for (size_t j = 0; j < dims; ++j) {
+            double coord = (i & (1 << j)) ? mbr[j][1] : mbr[j][0]; // Use upper or lower bound based on bitmask
+            sum += coord;
+        }
+
+        if (sum <= normalizedMax) {
+            // At least one vertex is valid
+            return true;
+        }
+    }
+    // All vertices are invalid
+    return false;
+}
 
 // Serializza l'oggetto QNode su disco
 // qnode.cpp

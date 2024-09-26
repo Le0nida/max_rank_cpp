@@ -9,12 +9,20 @@
 #include "halfspace.h"
 #include <vector>
 #include <array>
+#include <unordered_set>
 
 class QTree {
 public:
     QTree(int dims, int maxhsnode);
     void inserthalfspaces(const std::vector<long int>& halfspaces);
     std::vector<std::shared_ptr<QNode>> getleaves();
+
+    bool hasHalfspaceBeenInserted(long int halfspaceID) {
+        return insertedHalfspaces.find(halfspaceID) != insertedHalfspaces.end();
+    }
+    void clearHalfspaceBeenInserted() {
+        insertedHalfspaces.clear();
+    }
 
 private:
     int dims;  // Dimensionality of the space wrapped by the tree
@@ -23,7 +31,8 @@ private:
     std::shared_ptr<QNode> root;  // Reference to root node
 
     std::shared_ptr<QNode> createroot();
-    void splitnode(std::shared_ptr<QNode> node);
+
+    std::unordered_set<long int> insertedHalfspaces;
 };
 
 #endif // QTREE_H
