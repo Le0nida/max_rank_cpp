@@ -239,121 +239,74 @@ bool QNode::checkNodeValidity() {
     return false;
 }
 
-// Serializza l'oggetto QNode su disco
-// qnode.cpp
-size_t QNode::saveToDisk(std::fstream& outStream) {
-    if (!outStream.is_open()) {
-        std::cerr << "Data file stream is not open for writing." << std::endl;
-        return 0;
+// Serialize the QNode to the provided output stream (in binary)
+void QNode::serialize(std::ostream& outStream) const {
+    // Serialize basic fields
+    outStream.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
+    outStream.write(reinterpret_cast<const char*>(&parentID), sizeof(parentID));
+    outStream.write(reinterpret_cast<const char*>(&norm), sizeof(norm));
+    outStream.write(reinterpret_cast<const char*>(&leaf), sizeof(leaf));
+    outStream.write(reinterpret_cast<const char*>(&order), sizeof(order));
+
+    // Serialize MBR (Minimum Bounding Region)
+    size_t mbrSize = mbr.size();
+    outStream.write(reinterpret_cast<const char*>(&mbrSize), sizeof(mbrSize));
+    for (const auto& arr : mbr) {
+        outStream.write(reinterpret_cast<const char*>(&arr[0]), sizeof(double));
+        outStream.write(reinterpret_cast<const char*>(&arr[1]), sizeof(double));
     }
 
-    // Prepare a vector to hold all data
-    std::vector<char> buffer;
-    buffer.reserve(estimatedSize()); // Preallocate memory
-
-    // Helper lambda to write data to buffer
-    auto writeToBuffer = [&](const void* data, size_t size) {
-        const char* bytes = static_cast<const char*>(data);
-        buffer.insert(buffer.end(), bytes, bytes + size);
-    };
-
-    // Serialize the nodeID and parentID
-    writeToBuffer(&nodeID, sizeof(nodeID));
-    writeToBuffer(&parentID, sizeof(parentID));
-
-    // Serialize the MBR
-    size_t mbrSize = mbr.size();
-    writeToBuffer(&mbrSize, sizeof(mbrSize));
-    writeToBuffer(mbr.data(), mbrSize * sizeof(std::array<double, 2>));
-
-    // Serialize the norm flag
-    writeToBuffer(&norm, sizeof(norm));
-
-    // Serialize the children IDs
+    // Serialize children IDs
     size_t childrenCount = childrenIDs.size();
-    writeToBuffer(&childrenCount, sizeof(childrenCount));
-    writeToBuffer(childrenIDs.data(), childrenCount * sizeof(long int));
+    outStream.write(reinterpret_cast<const char*>(&childrenCount), sizeof(childrenCount));
+    outStream.write(reinterpret_cast<const char*>(childrenIDs.data()), childrenCount * sizeof(long int));
 
-    // Serialize the halfspaces
+    // Serialize halfspaces
     size_t halfspaceCount = halfspaces.size();
-    writeToBuffer(&halfspaceCount, sizeof(halfspaceCount));
-    writeToBuffer(halfspaces.data(), halfspaceCount * sizeof(long int));
+    outStream.write(reinterpret_cast<const char*>(&halfspaceCount), sizeof(halfspaceCount));
+    outStream.write(reinterpret_cast<const char*>(halfspaces.data()), halfspaceCount * sizeof(long int));
 
-    // Serialize the covered halfspaces
+    // Serialize covered halfspaces
     size_t coveredCount = covered.size();
-    writeToBuffer(&coveredCount, sizeof(coveredCount));
-    writeToBuffer(covered.data(), coveredCount * sizeof(long int));
-
-    // Get total size of the data (excluding the size field)
-    size_t dataSize = buffer.size();
-
-    // Write the size of the data
-    outStream.write(reinterpret_cast<const char*>(&dataSize), sizeof(dataSize));
-
-    // Write the data itself
-    outStream.write(buffer.data(), dataSize);
-
-    // Return the size of the data only (excluding the size field)
-    return dataSize;
+    outStream.write(reinterpret_cast<const char*>(&coveredCount), sizeof(coveredCount));
+    outStream.write(reinterpret_cast<const char*>(covered.data()), coveredCount * sizeof(long int));
 }
 
-// Carica l'oggetto QNode da disco
-void QNode::loadFromDisk(std::fstream& inStream) {
-    if (!inStream.is_open()) {
-        std::cerr << "Data file stream is not open for reading." << std::endl;
-        return;
+// Deserialize the QNode from the provided input stream (in binary)
+void QNode::deserialize(std::istream& inStream) {
+    // Deserialize basic fields
+    inStream.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
+    inStream.read(reinterpret_cast<char*>(&parentID), sizeof(parentID));
+    inStream.read(reinterpret_cast<char*>(&norm), sizeof(norm));
+    inStream.read(reinterpret_cast<char*>(&leaf), sizeof(leaf));
+    inStream.read(reinterpret_cast<char*>(&order), sizeof(order));
+
+    // Deserialize MBR (Minimum Bounding Region)
+    size_t mbrSize;
+    inStream.read(reinterpret_cast<char*>(&mbrSize), sizeof(mbrSize));
+    mbr.resize(mbrSize);
+    for (auto& arr : mbr) {
+        inStream.read(reinterpret_cast<char*>(&arr[0]), sizeof(double));
+        inStream.read(reinterpret_cast<char*>(&arr[1]), sizeof(double));
     }
 
-    // Clear any error flags
-    inStream.clear();
-
-    // Read the size of the data
-    size_t dataSize;
-    inStream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
-
-    // Read the data into a buffer
-    std::vector<char> buffer(dataSize);
-    inStream.read(buffer.data(), dataSize);
-
-
-    size_t pos = 0;
-
-    // Helper lambda to read data from buffer
-    auto readFromBuffer = [&](void* data, size_t size) {
-        memcpy(data, buffer.data() + pos, size);
-        pos += size;
-    };
-
-    // Deserialize the nodeID and parentID
-    readFromBuffer(&nodeID, sizeof(nodeID));
-    readFromBuffer(&parentID, sizeof(parentID));
-
-    // Deserialize the MBR
-    size_t mbrSize;
-    readFromBuffer(&mbrSize, sizeof(mbrSize));
-    mbr.resize(mbrSize);
-    readFromBuffer(mbr.data(), mbrSize * sizeof(std::array<double, 2>));
-
-    // Deserialize the norm flag
-    readFromBuffer(&norm, sizeof(norm));
-
-    // Deserialize the children IDs
+    // Deserialize children IDs
     size_t childrenCount;
-    readFromBuffer(&childrenCount, sizeof(childrenCount));
+    inStream.read(reinterpret_cast<char*>(&childrenCount), sizeof(childrenCount));
     childrenIDs.resize(childrenCount);
-    readFromBuffer(childrenIDs.data(), childrenCount * sizeof(long int));
+    inStream.read(reinterpret_cast<char*>(childrenIDs.data()), childrenCount * sizeof(long int));
 
-    // Deserialize the halfspaces
+    // Deserialize halfspaces
     size_t halfspaceCount;
-    readFromBuffer(&halfspaceCount, sizeof(halfspaceCount));
+    inStream.read(reinterpret_cast<char*>(&halfspaceCount), sizeof(halfspaceCount));
     halfspaces.resize(halfspaceCount);
-    readFromBuffer(halfspaces.data(), halfspaceCount * sizeof(long int));
+    inStream.read(reinterpret_cast<char*>(halfspaces.data()), halfspaceCount * sizeof(long int));
 
-    // Deserialize the covered halfspaces
+    // Deserialize covered halfspaces
     size_t coveredCount;
-    readFromBuffer(&coveredCount, sizeof(coveredCount));
+    inStream.read(reinterpret_cast<char*>(&coveredCount), sizeof(coveredCount));
     covered.resize(coveredCount);
-    readFromBuffer(covered.data(), coveredCount * sizeof(long int));
+    inStream.read(reinterpret_cast<char*>(covered.data()), coveredCount * sizeof(long int));
 }
 
 

@@ -1,207 +1,144 @@
-//
-// Created by leona on 09/09/2024.
-//
-
 #include "lrucache.h"
-#include <fstream>
+#include <leveldb/write_batch.h>
+#include <sstream>
 #include <iostream>
-#include <filesystem>
-#include <future>
+#include <thread>
 
-// Definizione della cache globale
+// Definition of global cache
 LRUCache globalCache;
 
-std::shared_ptr<QNode> LRUCache::get(int nodeID) {
-    // Check if node is in cache
-    if (cache.find(nodeID) != cache.end()) {
-        lruList.splice(lruList.begin(), lruList, cache[nodeID]);
-        return cache[nodeID]->second;
+LRUCache::LRUCache() {
+    const int MIN_CACHE_SIZE = 1000;
+    const int MAX_CACHE_SIZE = 1000000;
+
+    // Calculate cache size based on available memory
+    size_t availableMemory = getAvailableMemory();
+    if (availableMemory == 0) {
+        std::cerr << "Failed to retrieve available memory. Using default cache size of 10,000." << std::endl;
+        cacheSize = 10000;
+    } else {
+        // Use 10% of available memory for cache
+        size_t cacheMemoryUsage = availableMemory / 10;
+        size_t estimatedNodeSize = sizeof(QNode) + 1024; // Adjust as necessary
+        cacheSize = static_cast<int>(cacheMemoryUsage / estimatedNodeSize);
+
+        if (cacheSize < MIN_CACHE_SIZE) {
+            cacheSize = MIN_CACHE_SIZE;
+        } else if (cacheSize > MAX_CACHE_SIZE) {
+            cacheSize = MAX_CACHE_SIZE;
+        }
+        std::cout << "Cache size set to " << cacheSize << " based on available memory." << std::endl;
     }
 
-    // Not in cache, load from disk
-    auto it = index.find(nodeID);
-    if (it != index.end()) {
-        auto node = std::make_shared<QNode>();
+    cacheSize = 8000;
 
-        // Clear error flags
-        dataFile.clear();
+    // Open LevelDB database
+    leveldb::Options options;
+    options.create_if_missing = true;
+    leveldb::Status status = leveldb::DB::Open(options, "nodesdb", &db);
+    if (!status.ok()) {
+        std::cerr << "Unable to open/create LevelDB database: " << status.ToString() << std::endl;
+        exit(EXIT_FAILURE);
+    }
+}
 
-        // Seek to the offset for reading
-        dataFile.seekg(it->second.offset, std::ios::beg);
+LRUCache::~LRUCache() {
+    for (auto& [nodeID, nodeIter] : cache) {
+        auto& node = nodeIter->second;
+        saveNodeToDB(nodeID, node);
+    }
 
-        // Load the node from disk
-        node->loadFromDisk(dataFile);
+    delete db;
+}
 
-        // **Synchronize the write position with the read position**
-        dataFile.seekp(dataFile.tellg());
+void LRUCache::saveNodeToDB(int nodeID, const std::shared_ptr<QNode>& node) {
+    std::stringstream ss;
+    node->serialize(ss);
+    leveldb::Status status = db->Put(leveldb::WriteOptions(), std::to_string(nodeID), ss.str());
+    if (!status.ok()) {
+        std::cerr << "Failed to write node " << nodeID << " to LevelDB: " << status.ToString() << std::endl;
+    }
+}
 
-        add(node);
+std::shared_ptr<QNode> LRUCache::loadNodeFromDB(int nodeID) {
+    std::string data;
+    leveldb::Status status = db->Get(leveldb::ReadOptions(), std::to_string(nodeID), &data);
+    if (!status.ok()) {
+        std::cerr << "Node with ID " << nodeID << " not found in LevelDB." << std::endl;
+        return nullptr;
+    }
+    std::stringstream ss(data);
+    auto node = std::make_shared<QNode>();
+    node->deserialize(ss);
+    return node;
+}
+
+std::shared_ptr<QNode> LRUCache::get(int nodeID) {
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex); // Acquire lock only for cache access
+        if (cache.find(nodeID) != cache.end()) {
+            lruList.splice(lruList.begin(), lruList, cache[nodeID]);
+            return cache[nodeID]->second;
+        }
+    }
+
+    // Load node from DB outside of the locked section
+    auto node = loadNodeFromDB(nodeID);
+    if (node) {
+        add(node); // Add back to cache
         return node;
     } else {
-        std::cerr << "Node with ID " << nodeID << " not found in index." << std::endl;
+        std::cerr << "Node with ID " << nodeID << " not found in LevelDB." << std::endl;
         return nullptr;
     }
 }
 
-
-void LRUCache::lockNode(int nodeID) {
-    // Aggiungi l'ID del nodo all'insieme dei nodi bloccati
-    lockedNodes.insert(nodeID);
-}
-
-void LRUCache::unlockNode(int nodeID) {
-    // Rimuovi l'ID del nodo dall'insieme dei nodi bloccati
-    lockedNodes.erase(nodeID);
-}
-
 void LRUCache::add(std::shared_ptr<QNode> qnode) {
     int nodeID = qnode->getNodeID();
-    invalidate(nodeID);
 
-    if (cache.size() >= cacheSize) {
-        // Remove the least recently used node
-        int evictID = lruList.back().first;
-        auto evictNode = lruList.back().second;
-        lruList.pop_back();
+    // Invalidate the node before locking to avoid deadlock
+    invalidate(nodeID); // No lock inside invalidate()
 
-        // Ensure we're at the end of the file
-        dataFile.clear(); // Clear any error flags
-        dataFile.seekp(0, std::ios::end);
-        std::streampos offset = dataFile.tellp();
+    {
+        std::lock_guard<std::mutex> lock(cacheMutex); // Acquire lock for cache modification
+        if (cache.size() >= cacheSize) {
+            int evictID = lruList.back().first;
+            auto evictNode = lruList.back().second;
+            lruList.pop_back();
 
-        // Save the node to the data file
-        evictNode->saveToDisk(dataFile);
+            // Save the evicted node to LevelDB asynchronously
+            std::thread([this, evictID, evictNode]() {
+                saveNodeToDB(evictID, evictNode);
+            }).detach();
 
-        // Flush the output buffer to ensure data is written
-        dataFile.flush();
-
-        // **Synchronize the read position with the write position**
-        dataFile.seekg(dataFile.tellp());
-
-        // Update the index with the offset
-        index[evictID] = {offset};
-
-        // Increment the index update counter
-        indexUpdateCounter++;
-
-        // Save the index periodically
-        if (indexUpdateCounter >= indexSaveThreshold) {
-            saveIndex();
-            indexUpdateCounter = 0;
+            cache.erase(evictID);
         }
 
-        cache.erase(evictID);
+        lruList.emplace_front(nodeID, qnode);
+        cache[nodeID] = lruList.begin();
     }
-
-    lruList.emplace_front(nodeID, qnode);
-    cache[nodeID] = lruList.begin();
 }
 
-
-
-
 void LRUCache::invalidate(int nodeID) {
-    // Se il nodo è bloccato, non fare nulla
+    std::lock_guard<std::mutex> lock(cacheMutex); // Lock only during cache modification
     if (lockedNodes.find(nodeID) != lockedNodes.end()) {
         std::cerr << "Warning: Attempted to evict a locked node with ID " << nodeID << std::endl;
         return;
     }
 
-    // Se il nodo è presente nella cache, rimuovilo
     if (cache.find(nodeID) != cache.end()) {
         auto it = cache[nodeID];
-        lruList.erase(it);  // Rimuovi il nodo dalla lista LRU
-        cache.erase(nodeID);  // Rimuovi il nodo dalla cache
+        lruList.erase(it);
+        cache.erase(nodeID);
     }
 }
 
-// Metodo per cancellare i file .dat in batch
-void batchDeleteFiles(const std::vector<std::string>& filepaths) {
-    for (const auto& path : filepaths) {
-        std::filesystem::remove(path);
-    }
+void LRUCache::lockNode(int nodeID) {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    lockedNodes.insert(nodeID);
 }
 
-// Funzione di utility per recuperare tutti i file .dat da una directory
-std::vector<std::string> getAllDatFiles(const std::string& directoryPath) {
-    std::vector<std::string> files;
-    for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
-        if (entry.path().extension() == ".dat") {
-            files.push_back(entry.path().string());
-        }
-    }
-    return files;
-}
-
-// Versione migliorata di cleanup, con cancellazione parallela
-void LRUCache::cleanup() {
-    std::vector<std::string> files = getAllDatFiles(".");
-
-    // Dividi i file in batch per cancellazioni parallele
-    const int batchSize = 6000;
-    std::vector<std::future<void>> futures;
-
-    for (size_t i = 0; i < files.size(); i += batchSize) {
-        std::vector<std::string> batch(files.begin() + i,
-                                       files.begin() + std::min(files.size(), i + batchSize));
-
-        // Crea un thread separato per ogni batch
-        futures.push_back(std::async(std::launch::async, batchDeleteFiles, batch));
-    }
-
-    // Attendi che tutti i thread abbiano terminato
-    for (auto& future : futures) {
-        future.get();
-    }
-}
-
-void LRUCache::loadIndex() {
-    std::ifstream in(indexFilePath, std::ios::binary);
-    if (!in.is_open()) {
-        // Index file doesn't exist; start with empty index
-        return;
-    }
-
-    size_t indexSize;
-    in.read(reinterpret_cast<char*>(&indexSize), sizeof(indexSize));
-
-    if (in.fail()) {
-        std::cerr << "Error reading index size from index file." << std::endl;
-        return;
-    }
-
-    for (size_t i = 0; i < indexSize; ++i) {
-        int nodeID;
-        IndexEntry entry;
-        in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
-        in.read(reinterpret_cast<char*>(&entry.offset), sizeof(entry.offset));
-
-        if (in.fail()) {
-            std::cerr << "Error reading index entry from index file." << std::endl;
-            break;
-        }
-
-        index[nodeID] = entry;
-    }
-
-    in.close();
-}
-
-void LRUCache::saveIndex() {
-    std::ofstream out(indexFilePath, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
-        std::cerr << "Failed to open index file for writing: " << indexFilePath << std::endl;
-        return;
-    }
-
-    size_t indexSize = index.size();
-    out.write(reinterpret_cast<const char*>(&indexSize), sizeof(indexSize));
-
-    for (const auto& [nodeID, entry] : index) {
-        out.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
-        out.write(reinterpret_cast<const char*>(&entry.offset), sizeof(entry.offset));
-    }
-
-    out.flush(); // Ensure data is written to disk
-    out.close();
+void LRUCache::unlockNode(int nodeID) {
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    lockedNodes.erase(nodeID);
 }

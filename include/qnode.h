@@ -76,6 +76,9 @@ public:
     std::vector<std::vector<std::array<double, 2>>> genSubdivisions();
     bool checkNodeValidity();
 
+    void serialize(std::ostream& outStream) const;   // Serialize the QNode to stream
+    void deserialize(std::istream& inStream);        // Deserialize the QNode from stream
+
 private:
     long int nodeID;                        // ID univoco del nodo
     long int parentID;                      // ID del nodo genitore
