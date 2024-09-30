@@ -23,7 +23,7 @@ QNode::QNode(int parentID, const std::vector<std::array<double, 2>>& mbr)
     : mbr(mbr), leaf(true), norm(true), order(0), parentID(parentID), nodeID(globalNodeID++){}
 
 QNode::QNode()
-    : mbr({}), leaf(true), norm(true), order(0), parentID(0), nodeID(globalNodeID++){}
+    : mbr({}), leaf(true), norm(true), order(0), parentID(0), nodeID(-1){}
 
 
 // Checks if the node is the root of the tree.
@@ -169,6 +169,7 @@ void QNode::splitNode() {
     for (const auto& child_mbr : subDivs) {
         // Create new child node
         auto child = std::make_shared<QNode>(/* appropriate parameters */);
+        child->nodeID = globalNodeID++;
         //child->level = level + 1;
         child->parentID = nodeID;
         child->mbr = child_mbr;

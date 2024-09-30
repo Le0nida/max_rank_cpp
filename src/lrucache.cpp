@@ -32,6 +32,9 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
         // Load the node from disk
         node->loadFromDisk(dataFile);
 
+        // **Synchronize the write position with the read position**
+        dataFile.seekp(dataFile.tellg());
+
         add(node);
         return node;
     } else {
@@ -39,6 +42,7 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
         return nullptr;
     }
 }
+
 
 void LRUCache::lockNode(int nodeID) {
     // Aggiungi l'ID del nodo all'insieme dei nodi bloccati
@@ -71,6 +75,9 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
         // Flush the output buffer to ensure data is written
         dataFile.flush();
 
+        // **Synchronize the read position with the write position**
+        dataFile.seekg(dataFile.tellp());
+
         // Update the index with the offset
         index[evictID] = {offset};
 
@@ -89,6 +96,7 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
     lruList.emplace_front(nodeID, qnode);
     cache[nodeID] = lruList.begin();
 }
+
 
 
 
@@ -157,11 +165,22 @@ void LRUCache::loadIndex() {
     size_t indexSize;
     in.read(reinterpret_cast<char*>(&indexSize), sizeof(indexSize));
 
+    if (in.fail()) {
+        std::cerr << "Error reading index size from index file." << std::endl;
+        return;
+    }
+
     for (size_t i = 0; i < indexSize; ++i) {
         int nodeID;
         IndexEntry entry;
         in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
         in.read(reinterpret_cast<char*>(&entry.offset), sizeof(entry.offset));
+
+        if (in.fail()) {
+            std::cerr << "Error reading index entry from index file." << std::endl;
+            break;
+        }
+
         index[nodeID] = entry;
     }
 
@@ -183,5 +202,6 @@ void LRUCache::saveIndex() {
         out.write(reinterpret_cast<const char*>(&entry.offset), sizeof(entry.offset));
     }
 
+    out.flush(); // Ensure data is written to disk
     out.close();
 }

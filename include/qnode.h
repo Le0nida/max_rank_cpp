@@ -11,6 +11,8 @@
 #include <memory>
 #include "halfspace.h"
 
+extern int globalNodeID;
+
 enum class PositionHS { BELOW, ABOVE, OVERLAPPED };
 
 class QNode {

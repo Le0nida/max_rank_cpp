@@ -68,7 +68,7 @@ private:
     void saveIndex();
 
     size_t indexUpdateCounter = 0;
-    const size_t indexSaveThreshold = 1000; // Save index every 1000 updates
+    const size_t indexSaveThreshold = 18000; // Save index every 100000 updates
 
 public:
     explicit LRUCache() {
