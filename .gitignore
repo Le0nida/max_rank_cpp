@@ -42,3 +42,4 @@ CMakeSettings.json
 /maxreankrelease
 /maxrankrtree
 *.zip
+/maxrank_leveldb
