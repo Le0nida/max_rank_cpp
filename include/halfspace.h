@@ -12,9 +12,9 @@
 #include "geom.h"
 
 enum Position {
-    IN = 1,
-    OUT = -1,
-    ON = 0
+    POS_IN = 1,
+    POS_OUT = -1,
+    POS_ON = 0
 };
 
 enum class Arrangement {

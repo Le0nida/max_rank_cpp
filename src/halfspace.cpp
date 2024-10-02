@@ -43,11 +43,11 @@ Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfs
     double val = std::inner_product(halfspace.coeff.begin(), halfspace.coeff.end(), point.coord.begin(), 0.0);
 
     if (val < halfspace.known) {
-        return Position::IN;
+        return Position::POS_IN;
     } else if (val > halfspace.known) {
-        return Position::OUT;
+        return Position::POS_OUT;
     } else {
-        return Position::ON;
+        return Position::POS_ON;
     }
 }
 

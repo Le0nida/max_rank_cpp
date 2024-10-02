@@ -1,15 +1,118 @@
-//
-// Created by leona on 09/09/2024.
-//
-
 #include "lrucache.h"
 #include <fstream>
 #include <iostream>
 #include <filesystem>
 #include <future>
 
-// Definizione della cache globale
+// Definition of the global cache
 LRUCache globalCache;
+
+LRUCache::LRUCache() {
+    const int MIN_CACHE_SIZE = 1000;
+    const int MAX_CACHE_SIZE = 1000000;
+
+    // Calculate cache size based on available memory
+    size_t availableMemory = getAvailableMemory();
+    if (availableMemory == 0) {
+        std::cerr << "Failed to retrieve available memory. Using default cache size of 10,000." << std::endl;
+        cacheSize = 10000;
+    } else {
+        // Use 10% of available memory for cache
+        size_t cacheMemoryUsage = availableMemory / 10;
+        // Estimate the size of a QNode in memory (this is a rough estimate)
+        size_t estimatedNodeSize = sizeof(QNode) + 1024; // Adjust as necessary
+        cacheSize = static_cast<int>(cacheMemoryUsage / estimatedNodeSize);
+
+        if (cacheSize < MIN_CACHE_SIZE) {
+            cacheSize = MIN_CACHE_SIZE;
+        } else if (cacheSize > MAX_CACHE_SIZE) {
+            cacheSize = MAX_CACHE_SIZE;
+        }
+        std::cout << "Cache size set to " << cacheSize << " based on available memory." << std::endl;
+    }
+
+    // Open the memory-mapped file
+    openMemoryMappedFile();
+}
+
+LRUCache::~LRUCache() {
+    // Ensure all nodes in cache are saved
+    for (auto& [nodeID, nodeIter] : cache) {
+        auto& node = nodeIter->second;
+
+        // Save the node to the memory-mapped file
+        size_t offset = currentOffset;
+        size_t dataSize = node->saveToDisk(pFileData, offset);
+
+        // Update currentOffset
+        currentOffset += dataSize;
+
+        // Update the index
+        index[nodeID] = {offset};
+    }
+
+    // Close the memory-mapped file
+    closeMemoryMappedFile();
+
+    // Perform cleanup if necessary
+    cleanup();
+}
+
+void LRUCache::openMemoryMappedFile() {
+    const size_t MAX_FILE_SIZE = 1024ULL * 1024ULL * 1024ULL; // 1 GB
+
+    // Open or create the file
+    hFile = CreateFileA(dataFilePath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        std::cerr << "Failed to open or create data file: " << dataFilePath << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    // Set the file size to MAX_FILE_SIZE
+    LARGE_INTEGER liFileSize;
+    liFileSize.QuadPart = MAX_FILE_SIZE;
+    if (!SetFilePointerEx(hFile, liFileSize, NULL, FILE_BEGIN) || !SetEndOfFile(hFile)) {
+        std::cerr << "Failed to set file size." << std::endl;
+        CloseHandle(hFile);
+        exit(EXIT_FAILURE);
+    }
+    fileSize = MAX_FILE_SIZE;
+
+    // Create a file mapping object
+    hMapFile = CreateFileMapping(hFile, NULL, PAGE_READWRITE, liFileSize.HighPart, liFileSize.LowPart, NULL);
+    if (hMapFile == NULL) {
+        std::cerr << "Failed to create file mapping object." << std::endl;
+        CloseHandle(hFile);
+        exit(EXIT_FAILURE);
+    }
+
+    // Map the entire file into the address space
+    pFileData = static_cast<char*>(MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 0));
+    if (pFileData == NULL) {
+        std::cerr << "Failed to map view of file." << std::endl;
+        CloseHandle(hMapFile);
+        CloseHandle(hFile);
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize currentOffset to 0
+    currentOffset = 0;
+}
+
+void LRUCache::closeMemoryMappedFile() {
+    if (pFileData) {
+        UnmapViewOfFile(pFileData);
+        pFileData = nullptr;
+    }
+    if (hMapFile != NULL) {
+        CloseHandle(hMapFile);
+        hMapFile = NULL;
+    }
+    if (hFile != INVALID_HANDLE_VALUE) {
+        CloseHandle(hFile);
+        hFile = INVALID_HANDLE_VALUE;
+    }
+}
 
 std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     // Check if node is in cache
@@ -23,17 +126,10 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     if (it != index.end()) {
         auto node = std::make_shared<QNode>();
 
-        // Clear error flags
-        dataFile.clear();
+        size_t offset = it->second.offset;
 
-        // Seek to the offset for reading
-        dataFile.seekg(it->second.offset, std::ios::beg);
-
-        // Load the node from disk
-        node->loadFromDisk(dataFile);
-
-        // **Synchronize the write position with the read position**
-        dataFile.seekp(dataFile.tellg());
+        // Load the node from memory-mapped file
+        node->loadFromDisk(pFileData, offset);
 
         add(node);
         return node;
@@ -41,17 +137,6 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
         std::cerr << "Node with ID " << nodeID << " not found in index." << std::endl;
         return nullptr;
     }
-}
-
-
-void LRUCache::lockNode(int nodeID) {
-    // Aggiungi l'ID del nodo all'insieme dei nodi bloccati
-    lockedNodes.insert(nodeID);
-}
-
-void LRUCache::unlockNode(int nodeID) {
-    // Rimuovi l'ID del nodo dall'insieme dei nodi bloccati
-    lockedNodes.erase(nodeID);
 }
 
 void LRUCache::add(std::shared_ptr<QNode> qnode) {
@@ -64,31 +149,25 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
         auto evictNode = lruList.back().second;
         lruList.pop_back();
 
-        // Ensure we're at the end of the file
-        dataFile.clear(); // Clear any error flags
-        dataFile.seekp(0, std::ios::end);
-        std::streampos offset = dataFile.tellp();
+        // Save the node to the memory-mapped file
+        size_t offset = currentOffset;
 
-        // Save the node to the data file
-        evictNode->saveToDisk(dataFile);
+        // Ensure we have enough space
+        size_t estimatedSize = evictNode->estimatedSize() + sizeof(size_t); // Include size field
+        if (currentOffset + estimatedSize > fileSize) {
+            std::cerr << "Error: Exceeded maximum file size for memory-mapped file." << std::endl;
+            // Handle error, perhaps expand the file or exit
+            // For now, we'll exit
+            exit(EXIT_FAILURE);
+        }
 
-        // Flush the output buffer to ensure data is written
-        dataFile.flush();
+        size_t dataSize = evictNode->saveToDisk(pFileData, offset);
 
-        // **Synchronize the read position with the write position**
-        dataFile.seekg(dataFile.tellp());
+        // Update currentOffset
+        currentOffset += dataSize;
 
         // Update the index with the offset
         index[evictID] = {offset};
-
-        // Increment the index update counter
-        indexUpdateCounter++;
-
-        // Save the index periodically
-        if (indexUpdateCounter >= indexSaveThreshold) {
-            saveIndex();
-            indexUpdateCounter = 0;
-        }
 
         cache.erase(evictID);
     }
@@ -97,32 +176,39 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
     cache[nodeID] = lruList.begin();
 }
 
-
-
-
 void LRUCache::invalidate(int nodeID) {
-    // Se il nodo è bloccato, non fare nulla
+    // If the node is locked, do nothing
     if (lockedNodes.find(nodeID) != lockedNodes.end()) {
         std::cerr << "Warning: Attempted to evict a locked node with ID " << nodeID << std::endl;
         return;
     }
 
-    // Se il nodo è presente nella cache, rimuovilo
+    // If the node is present in the cache, remove it
     if (cache.find(nodeID) != cache.end()) {
         auto it = cache[nodeID];
-        lruList.erase(it);  // Rimuovi il nodo dalla lista LRU
-        cache.erase(nodeID);  // Rimuovi il nodo dalla cache
+        lruList.erase(it);  // Remove the node from the LRU list
+        cache.erase(nodeID);  // Remove the node from the cache
     }
 }
 
-// Metodo per cancellare i file .dat in batch
+void LRUCache::lockNode(int nodeID) {
+    // Add the node ID to the set of locked nodes
+    lockedNodes.insert(nodeID);
+}
+
+void LRUCache::unlockNode(int nodeID) {
+    // Remove the node ID from the set of locked nodes
+    lockedNodes.erase(nodeID);
+}
+
+// Method to delete .dat files in batch
 void batchDeleteFiles(const std::vector<std::string>& filepaths) {
     for (const auto& path : filepaths) {
         std::filesystem::remove(path);
     }
 }
 
-// Funzione di utility per recuperare tutti i file .dat da una directory
+// Utility function to retrieve all .dat files from a directory
 std::vector<std::string> getAllDatFiles(const std::string& directoryPath) {
     std::vector<std::string> files;
     for (const auto& entry : std::filesystem::directory_iterator(directoryPath)) {
@@ -133,11 +219,11 @@ std::vector<std::string> getAllDatFiles(const std::string& directoryPath) {
     return files;
 }
 
-// Versione migliorata di cleanup, con cancellazione parallela
+// Improved version of cleanup with parallel deletion
 void LRUCache::cleanup() {
     std::vector<std::string> files = getAllDatFiles(".");
 
-    // Dividi i file in batch per cancellazioni parallele
+    // Divide files into batches for parallel deletion
     const int batchSize = 6000;
     std::vector<std::future<void>> futures;
 
@@ -145,63 +231,12 @@ void LRUCache::cleanup() {
         std::vector<std::string> batch(files.begin() + i,
                                        files.begin() + std::min(files.size(), i + batchSize));
 
-        // Crea un thread separato per ogni batch
+        // Create a separate thread for each batch
         futures.push_back(std::async(std::launch::async, batchDeleteFiles, batch));
     }
 
-    // Attendi che tutti i thread abbiano terminato
+    // Wait for all threads to finish
     for (auto& future : futures) {
         future.get();
     }
-}
-
-void LRUCache::loadIndex() {
-    std::ifstream in(indexFilePath, std::ios::binary);
-    if (!in.is_open()) {
-        // Index file doesn't exist; start with empty index
-        return;
-    }
-
-    size_t indexSize;
-    in.read(reinterpret_cast<char*>(&indexSize), sizeof(indexSize));
-
-    if (in.fail()) {
-        std::cerr << "Error reading index size from index file." << std::endl;
-        return;
-    }
-
-    for (size_t i = 0; i < indexSize; ++i) {
-        int nodeID;
-        IndexEntry entry;
-        in.read(reinterpret_cast<char*>(&nodeID), sizeof(nodeID));
-        in.read(reinterpret_cast<char*>(&entry.offset), sizeof(entry.offset));
-
-        if (in.fail()) {
-            std::cerr << "Error reading index entry from index file." << std::endl;
-            break;
-        }
-
-        index[nodeID] = entry;
-    }
-
-    in.close();
-}
-
-void LRUCache::saveIndex() {
-    std::ofstream out(indexFilePath, std::ios::binary | std::ios::trunc);
-    if (!out.is_open()) {
-        std::cerr << "Failed to open index file for writing: " << indexFilePath << std::endl;
-        return;
-    }
-
-    size_t indexSize = index.size();
-    out.write(reinterpret_cast<const char*>(&indexSize), sizeof(indexSize));
-
-    for (const auto& [nodeID, entry] : index) {
-        out.write(reinterpret_cast<const char*>(&nodeID), sizeof(nodeID));
-        out.write(reinterpret_cast<const char*>(&entry.offset), sizeof(entry.offset));
-    }
-
-    out.flush(); // Ensure data is written to disk
-    out.close();
 }

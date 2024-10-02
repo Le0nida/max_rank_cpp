@@ -239,15 +239,8 @@ bool QNode::checkNodeValidity() {
     return false;
 }
 
-// Serializza l'oggetto QNode su disco
-// qnode.cpp
-size_t QNode::saveToDisk(std::fstream& outStream) {
-    if (!outStream.is_open()) {
-        std::cerr << "Data file stream is not open for writing." << std::endl;
-        return 0;
-    }
-
-    // Prepare a vector to hold all data
+size_t QNode::saveToDisk(char* pFileData, size_t offset) {
+    // Prepare a buffer to hold all data
     std::vector<char> buffer;
     buffer.reserve(estimatedSize()); // Preallocate memory
 
@@ -288,33 +281,33 @@ size_t QNode::saveToDisk(std::fstream& outStream) {
     size_t dataSize = buffer.size();
 
     // Write the size of the data
-    outStream.write(reinterpret_cast<const char*>(&dataSize), sizeof(dataSize));
+    size_t totalSize = sizeof(dataSize) + dataSize;
 
-    // Write the data itself
-    outStream.write(buffer.data(), dataSize);
+    // Copy the data into the memory-mapped file
+    char* dest = pFileData + offset;
 
-    // Return the size of the data only (excluding the size field)
-    return dataSize;
+    // First, write the dataSize
+    memcpy(dest, &dataSize, sizeof(dataSize));
+    dest += sizeof(dataSize);
+
+    // Then, write the data
+    memcpy(dest, buffer.data(), dataSize);
+
+    return totalSize;
 }
 
-// Carica l'oggetto QNode da disco
-void QNode::loadFromDisk(std::fstream& inStream) {
-    if (!inStream.is_open()) {
-        std::cerr << "Data file stream is not open for reading." << std::endl;
-        return;
-    }
-
-    // Clear any error flags
-    inStream.clear();
+void QNode::loadFromDisk(char* pFileData, size_t offset) {
+    // Read from the memory-mapped file
+    const char* src = pFileData + offset;
 
     // Read the size of the data
     size_t dataSize;
-    inStream.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
+    memcpy(&dataSize, src, sizeof(dataSize));
+    src += sizeof(dataSize);
 
     // Read the data into a buffer
     std::vector<char> buffer(dataSize);
-    inStream.read(buffer.data(), dataSize);
-
+    memcpy(buffer.data(), src, dataSize);
 
     size_t pos = 0;
 
@@ -355,7 +348,6 @@ void QNode::loadFromDisk(std::fstream& inStream) {
     covered.resize(coveredCount);
     readFromBuffer(covered.data(), coveredCount * sizeof(long int));
 }
-
 
 size_t QNode::estimatedSize() const {
     size_t size = 0;

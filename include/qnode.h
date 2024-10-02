@@ -69,8 +69,9 @@ public:
     void clearHalfspaces();
 
 
-    size_t saveToDisk(std::fstream& outStream);           // Serializes the QNode to disk
-    void loadFromDisk(std::fstream& inStream);         // Loads the QNode from disk
+    size_t saveToDisk(char* pFileData, size_t offset);
+    void loadFromDisk(char* pFileData, size_t offset);
+    size_t estimatedSize() const;
 
     void splitNode();
     std::vector<std::vector<std::array<double, 2>>> genSubdivisions();
@@ -89,7 +90,6 @@ private:
     std::vector<long int> covered;          // Covered halfspaces
     std::vector<long int> halfspaces;       // Halfspaces in the node
 
-    size_t estimatedSize() const;
 };
 
 #endif //QNODE_H
