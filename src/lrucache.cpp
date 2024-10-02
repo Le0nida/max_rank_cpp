@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iostream>
 #include <thread>
+#include <filesystem>
 
 // Definition of global cache
 LRUCache globalCache;
@@ -29,13 +30,17 @@ LRUCache::LRUCache() {
         }
         std::cout << "Cache size set to " << cacheSize << " based on available memory." << std::endl;
     }
-
-    cacheSize = 8000;
+    
+    // Delete existing LevelDB directory
+    std::string dbPath = "nodesdb";
+    if (std::filesystem::exists(dbPath)) {
+        std::filesystem::remove_all(dbPath);
+    }
 
     // Open LevelDB database
     leveldb::Options options;
     options.create_if_missing = true;
-    leveldb::Status status = leveldb::DB::Open(options, "nodesdb", &db);
+    leveldb::Status status = leveldb::DB::Open(options, dbPath, &db);
     if (!status.ok()) {
         std::cerr << "Unable to open/create LevelDB database: " << status.ToString() << std::endl;
         exit(EXIT_FAILURE);
@@ -43,12 +48,21 @@ LRUCache::LRUCache() {
 }
 
 LRUCache::~LRUCache() {
+    // Save all nodes in cache to DB
     for (auto& [nodeID, nodeIter] : cache) {
         auto& node = nodeIter->second;
         saveNodeToDB(nodeID, node);
     }
 
+    // Close LevelDB database
     delete db;
+    db = nullptr;
+
+    // Delete LevelDB directory
+    std::string dbPath = "nodesdb";
+    if (std::filesystem::exists(dbPath)) {
+        std::filesystem::remove_all(dbPath);
+    }
 }
 
 void LRUCache::saveNodeToDB(int nodeID, const std::shared_ptr<QNode>& node) {
@@ -72,6 +86,7 @@ std::shared_ptr<QNode> LRUCache::loadNodeFromDB(int nodeID) {
     node->deserialize(ss);
     return node;
 }
+
 
 std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     {
@@ -106,10 +121,9 @@ void LRUCache::add(std::shared_ptr<QNode> qnode) {
             auto evictNode = lruList.back().second;
             lruList.pop_back();
 
-            // Save the evicted node to LevelDB asynchronously
-            std::thread([this, evictID, evictNode]() {
-                saveNodeToDB(evictID, evictNode);
-            }).detach();
+            // Save the evicted node to LevelDB synchronously
+            // to avoid concurrency issues
+            saveNodeToDB(evictID, evictNode);
 
             cache.erase(evictID);
         }
