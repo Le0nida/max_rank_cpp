@@ -59,7 +59,7 @@ LRUCache::~LRUCache() {
 }
 
 void LRUCache::openMemoryMappedFile() {
-    const size_t MAX_FILE_SIZE = 1024ULL * 1024ULL * 1024ULL; // 1 GB
+    const size_t MAX_FILE_SIZE = 6ULL * 1024ULL * 1024ULL * 1024ULL; // 6 GB
 
     // Open or create the file
     hFile = CreateFileA(dataFilePath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
