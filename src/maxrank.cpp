@@ -7,29 +7,21 @@
 #include "halfspace.h"
 #include "cell.h"
 #include "qtree.h"
+#include "context.h"
 #include <algorithm>
 #include <iostream>
 #include <limits>
 
-
-// Definisci e inizializza le variabili globali
-HalfSpaceCache* halfspaceCache = nullptr;
-std::unordered_map<Point, long, PointHash> pointToHalfSpaceCache;
-
-std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
-
-    QTree qt(p.dims - 1, 10);
+std::pair<int, std::vector<Cell>> aa_hd(Context& ctx, const std::vector<Point>& data, const Point& p) {
+    QTree qt(p.dims - 1, 10, ctx);
     std::vector<Point> dominators = getdominators(data, p);
     std::vector<Point> incomp = getincomparables(data, p);
 
     qt.clearHalfspaceBeenInserted();
 
-    // Inizializzo la cache per gli halfspaces
-    initializeCache(data.size());
-
     auto updateqt = [&](const std::vector<Point>& old_sky) {
         std::vector<Point> new_sky = getskyline(incomp);
-        std::vector<long> new_halfspaces = genhalfspaces(p, new_sky);
+        std::vector<long> new_halfspaces = genhalfspaces(ctx, p, new_sky);
         std::vector<long> unique_new_halfspaces;
         for (const auto& hs : new_halfspaces) {
             bool found = false;
@@ -60,9 +52,6 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         return std::make_pair(new_sky, new_leaves);
     };
 
-
-
-
     auto [sky, leaves] = updateqt({});
 
     int minorder_singular = std::numeric_limits<int>::max();
@@ -83,7 +72,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             int hamweight = 0;
             while (hamweight <= leaf->getHalfspaces().size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
                 std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->getHalfspaces().size()), hamweight);
-                std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
+                std::vector<Cell> cells = searchmincells_lp(ctx, *leaf, hamstrings);
 
                 if (!cells.empty()) {
                     for (auto& cell : cells) {
@@ -106,13 +95,13 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         int new_singulars = 0;
         std::vector<std::shared_ptr<HalfSpace>> to_expand;
         for (auto& cell : mincells) {
-            if (cell.issingular()) {
+            if (cell.issingular(ctx)) {
                 minorder_singular = cell.order;
                 mincells_singular.push_back(cell);
                 new_singulars++;
             } else {
                 for (auto k : cell.covered) {
-                    auto hs = halfspaceCache->get(k);
+                    auto hs = ctx.halfspaceCache->get(k);
                     if (hs->arr == Arrangement::AUGMENTED && std::find(to_expand.begin(), to_expand.end(), hs) == to_expand.end()) {
                         to_expand.push_back(hs);
                     }
@@ -135,7 +124,6 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             if (it != incomp.end()) {
                 incomp.erase(it);
             }
-
         }
         std::tie(sky, leaves) = updateqt(sky);
     }

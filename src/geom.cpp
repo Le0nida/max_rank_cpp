@@ -3,15 +3,39 @@
 //
 
 #include "geom.h"
-#include <vector>
-#include <array>
 #include <numeric>
 #include <bitset>
 #include <iostream>
 
+Point::Point(const std::vector<double>& coord, int id)
+    : id(id), coord(coord), dims(coord.size()) {}
 
-Point::Point(const std::vector<double>& coord, int id) : id(id), coord(coord), dims(coord.size()) {}
+void Point::saveToDisk(std::ofstream& out) const {
+    out.write(reinterpret_cast<const char*>(&id), sizeof(id));
+    out.write(reinterpret_cast<const char*>(&dims), sizeof(dims));
 
+    size_t coordSize = coord.size();
+    out.write(reinterpret_cast<const char*>(&coordSize), sizeof(coordSize));
+    out.write(reinterpret_cast<const char*>(coord.data()), coordSize * sizeof(double));
+}
+
+void Point::loadFromDisk(std::ifstream& in) {
+    in.read(reinterpret_cast<char*>(&id), sizeof(id));
+    in.read(reinterpret_cast<char*>(&dims), sizeof(dims));
+
+    size_t coordSize;
+    in.read(reinterpret_cast<char*>(&coordSize), sizeof(coordSize));
+    coord.resize(coordSize);
+    in.read(reinterpret_cast<char*>(coord.data()), coordSize * sizeof(double));
+}
+
+std::size_t PointHash::operator()(const Point& p) const {
+    std::size_t seed = 0;
+    for (double coord : p.coord) {
+        seed ^= std::hash<double>{}(coord) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+    }
+    return seed;
+}
 
 std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> genmasks(int dims) {
     std::vector<double> incr(dims, 0.5);

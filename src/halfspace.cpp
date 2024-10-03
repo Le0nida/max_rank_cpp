@@ -2,16 +2,13 @@
 // Created by leona on 06/08/2024.
 //
 
-#include "geom.h"
 #include "halfspace.h"
-#include <iostream>
-#include <cassert>
 #include <limits>
-#include <memory>
-#include <numeric> // Per std::inner_product
+#include <numeric>
+#include "context.h"
 
-
-HalfLine::HalfLine(const Point& pnt) : pnt(pnt), dims(2), arr(Arrangement::AUGMENTED) {
+HalfLine::HalfLine(const Point& pnt)
+    : pnt(pnt), dims(2), arr(Arrangement::AUGMENTED) {
     m = pnt.coord[0] - pnt.coord[1];
     q = pnt.coord[1];
 }
@@ -20,7 +17,7 @@ double HalfLine::get_y(double x) const {
     return m * x + q;
 }
 
-HalfSpace::HalfSpace(const long int pntID, const std::vector<double>& coeff, double known)
+HalfSpace::HalfSpace(long int pntID, const std::vector<double>& coeff, double known)
     : pntID(pntID), coeff(coeff), known(known), dims(coeff.size()), arr(Arrangement::AUGMENTED) {}
 
 HalfSpace::HalfSpace()
@@ -28,6 +25,34 @@ HalfSpace::HalfSpace()
 
 bool HalfSpace::operator==(const HalfSpace& other) const {
     return pntID == other.pntID && coeff == other.coeff && known == other.known && arr == other.arr && dims == other.dims;
+}
+
+void HalfSpace::saveToDisk(std::ofstream& out) const {
+    out.write(reinterpret_cast<const char*>(&pntID), sizeof(pntID));
+
+    size_t coeffSize = coeff.size();
+    out.write(reinterpret_cast<const char*>(&coeffSize), sizeof(coeffSize));
+    out.write(reinterpret_cast<const char*>(coeff.data()), coeffSize * sizeof(double));
+
+    out.write(reinterpret_cast<const char*>(&known), sizeof(known));
+    int arr_int = static_cast<int>(arr);
+    out.write(reinterpret_cast<const char*>(&arr_int), sizeof(arr_int));
+    out.write(reinterpret_cast<const char*>(&dims), sizeof(dims));
+}
+
+void HalfSpace::loadFromDisk(std::ifstream& in) {
+    in.read(reinterpret_cast<char*>(&pntID), sizeof(pntID));
+
+    size_t coeffSize;
+    in.read(reinterpret_cast<char*>(&coeffSize), sizeof(coeffSize));
+    coeff.resize(coeffSize);
+    in.read(reinterpret_cast<char*>(coeff.data()), coeffSize * sizeof(double));
+
+    in.read(reinterpret_cast<char*>(&known), sizeof(known));
+    int arr_int;
+    in.read(reinterpret_cast<char*>(&arr_int), sizeof(arr_int));
+    arr = static_cast<Arrangement>(arr_int);
+    in.read(reinterpret_cast<char*>(&dims), sizeof(dims));
 }
 
 Point find_halflines_intersection(const HalfLine& r, const HalfLine& s) {
@@ -51,44 +76,54 @@ Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfs
     }
 }
 
-std::vector<long> genhalfspaces(const Point& p, const std::vector<Point>& records) {
-    // Preallocazione della lista degli halfspaceID in base al numero di records (dimensione fissa)
+std::vector<long> genhalfspaces(Context& ctx, const Point& p, const std::vector<Point>& records) {
     std::vector<long> halfspaceIDs;
     halfspaceIDs.reserve(records.size());
 
-    double p_d = p.coord.back();  // Ultima coordinata di p (costante)
-    std::vector<double> p_i(p.coord.begin(), p.coord.end() - 1);  // Coordinate rimanenti di p
+    double p_d = p.coord.back();
+    std::vector<double> p_i(p.coord.begin(), p.coord.end() - 1);
 
     for (const auto& r : records) {
-        // Verifica se il punto "r" è già stato convertito in half-space
-        if (pointToHalfSpaceCache.find(r) != pointToHalfSpaceCache.end()) {
-            // Se esiste già, aggiungi solo l'ID dell'halfspace corrispondente
-            halfspaceIDs.push_back(pointToHalfSpaceCache[r]);
-            // TODO modifica riportando solo i nuovi hs
-            continue;  // Salta la creazione dell'halfspace per questo record
+        if (ctx.pointToHalfSpaceCache.find(r) != ctx.pointToHalfSpaceCache.end()) {
+            halfspaceIDs.push_back(ctx.pointToHalfSpaceCache[r]);
+            continue;
         }
 
-        double r_d = r.coord.back();  // Ultima coordinata di r (costante)
-        std::vector<double> r_i(r.coord.begin(), r.coord.end() - 1);  // Coordinate rimanenti di r
+        double r_d = r.coord.back();
+        std::vector<double> r_i(r.coord.begin(), r.coord.end() - 1);
 
-        // Calcolo dei coefficienti dell'halfspace
         std::vector<double> coeff(r_i.size());
         for (size_t i = 0; i < r_i.size(); ++i) {
             coeff[i] = (r_i[i] - r_d) - (p_i[i] - p_d);
         }
 
         long int id = r.id;
-        // Crea il nuovo halfspace
         auto halfspace = std::make_shared<HalfSpace>(id, coeff, p_d - r_d);
 
-        // Inserisci l'halfspace nella cache globale
-        halfspaceCache->insert(id, halfspace);
-
-        // Aggiungi l'ID dell'halfspace alla lista e memorizza il mapping nel punto cache
+        ctx.halfspaceCache->insert(id, halfspace);
         halfspaceIDs.push_back(id);
-        pointToHalfSpaceCache[r] = id;  // Mappa il punto all'ID dell'halfspace
+        ctx.pointToHalfSpaceCache[r] = id;
     }
 
-    // Restituisci la lista degli ID degli halfspaces
     return halfspaceIDs;
+}
+
+HalfSpaceCache::HalfSpaceCache(size_t cacheSize) {
+    cache.reserve(cacheSize);
+}
+
+void HalfSpaceCache::insert(long id, std::shared_ptr<HalfSpace> halfspace) {
+    cache[id] = std::move(halfspace);
+}
+
+std::shared_ptr<HalfSpace> HalfSpaceCache::get(long id) const {
+    auto it = cache.find(id);
+    if (it != cache.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+bool HalfSpaceCache::contains(long id) const {
+    return cache.find(id) != cache.end();
 }

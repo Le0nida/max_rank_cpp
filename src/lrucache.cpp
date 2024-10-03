@@ -3,24 +3,20 @@
 #include <iostream>
 #include <filesystem>
 #include <future>
+#include "qnode.h"
+#include "utils.h"
 
-// Definition of the global cache
-LRUCache globalCache;
-
-LRUCache::LRUCache() {
+LRUCache::LRUCache(Context& ctx) : ctx(ctx) {
     const int MIN_CACHE_SIZE = 1000;
     const int MAX_CACHE_SIZE = 1000000;
 
-    // Calculate cache size based on available memory
     size_t availableMemory = getAvailableMemory();
     if (availableMemory == 0) {
         std::cerr << "Failed to retrieve available memory. Using default cache size of 10,000." << std::endl;
         cacheSize = 10000;
     } else {
-        // Use 20% of available memory for cache
         size_t cacheMemoryUsage = availableMemory / 5;
-        // Estimate the size of a QNode in memory (this is a rough estimate)
-        size_t estimatedNodeSize = sizeof(QNode) + 1024; // Adjust as necessary
+        size_t estimatedNodeSize = sizeof(QNode) + 1024;
         cacheSize = static_cast<int>(cacheMemoryUsage / estimatedNodeSize);
 
         if (cacheSize < MIN_CACHE_SIZE) {
@@ -31,7 +27,6 @@ LRUCache::LRUCache() {
         std::cout << "Cache size set to " << cacheSize << " based on available memory." << std::endl;
     }
 
-    // Open the memory-mapped file
     openMemoryMappedFile();
 }
 
@@ -40,21 +35,16 @@ LRUCache::~LRUCache() {
     for (auto& [nodeID, nodeIter] : cache) {
         auto& node = nodeIter->second;
 
-        // Save the node to the memory-mapped file
         size_t offset = currentOffset;
         size_t dataSize = node->saveToDisk(pFileData, offset);
 
-        // Update currentOffset
         currentOffset += dataSize;
 
-        // Update the index
         index[nodeID] = {offset};
     }
 
-    // Close the memory-mapped file
     closeMemoryMappedFile();
 
-    // Perform cleanup if necessary
     cleanup();
 }
 
@@ -124,7 +114,7 @@ std::shared_ptr<QNode> LRUCache::get(int nodeID) {
     // Not in cache, load from disk
     auto it = index.find(nodeID);
     if (it != index.end()) {
-        auto node = std::make_shared<QNode>();
+        auto node = std::make_shared<QNode>(ctx);
 
         size_t offset = it->second.offset;
 

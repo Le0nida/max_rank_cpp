@@ -115,32 +115,34 @@ int main(int argc, char* argv[]) {
     // Main MaxRank routine
     vector<vector<double>> res;
     vector<vector<double>> cells;
-
+    mutex res_mutex;
     if (data[0].dims > 2) {
         for (int q : query) {
-            // Reset global variables
-            halfspaceCache = nullptr;
-            pointToHalfSpaceCache.clear();
-            globalNodeID = 0;
-            globalCache.clear(); // You might need to implement a clear method
-            cout << "#  Processing data point " << q << "  #" << endl;
-            int idx = q - 1;  // Assuming query contains 1-based indices
+            Context ctx(data.size());
 
-            cout << "#  " << Eigen::Map<Eigen::VectorXd>(data[idx].coord.data(), data[idx].coord.size()).transpose() << "  #" << endl;
+            cout << "#  Processing data point " << q << "  #" << endl;
+            int idx = q - 1;
+
+            cout << "#  ";
+            for (double val : data[idx].coord) {
+                cout << val << " ";
+            }
+            cout << " #" << endl;
 
             int maxrank;
             vector<Cell> mincells;
-            if (method == "BA") {
-                //tie(maxrank, mincells) = ba_hd(data, data[idx]);
-            } else {
-                tie(maxrank, mincells) = aa_hd(data, data[idx]);
-            }
+
+            tie(maxrank, mincells) = aa_hd(ctx, data, data[idx]);
+
             cout << "#  MaxRank: " << maxrank << "  NOfMincells: " << mincells.size() << "  #" << endl;
 
-            res.push_back({(double)q, (double)maxrank});
+            vector<double> res_entry = {(double)q, (double)maxrank};
             vector<double> cell_entry = { (double)q };
             cell_entry.insert(cell_entry.end(), mincells[0].feasible_pnt.coord.begin(), mincells[0].feasible_pnt.coord.end());
             cell_entry.push_back(1 - accumulate(mincells[0].feasible_pnt.coord.begin(), mincells[0].feasible_pnt.coord.end(), 0.0));
+
+            lock_guard<mutex> lock(res_mutex);
+            res.push_back(res_entry);
             cells.push_back(cell_entry);
         }
     } else {

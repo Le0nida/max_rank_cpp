@@ -11,31 +11,17 @@
 #include <bitset>
 #include <src/Highs.h>
 
-// Constructor for Cell class remains unchanged
 Cell::Cell(int order, const std::string& mask, const std::vector<long>& covered,
            const std::vector<long>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr,
            const Point& feasible_pnt)
-    : order(order), mask(mask), covered(covered), halfspaces(halfspaces), leaf_mbr(leaf_mbr), feasible_pnt(feasible_pnt)
-{
+    : order(order), mask(mask), covered(covered), halfspaces(halfspaces), leaf_mbr(leaf_mbr), feasible_pnt(feasible_pnt) {
 }
 
-bool Cell::issingular() const
-{
+bool Cell::issingular(Context& ctx) const {
     return std::all_of(covered.begin(), covered.end(),
-                       [](long int id) { return halfspaceCache->get(id)->arr == Arrangement::SINGULAR; });
+                       [&ctx](long int id) { return ctx.halfspaceCache->get(id)->arr == Arrangement::SINGULAR; });
 }
 
-// Constructor for Interval class remains unchanged
-Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
-    : halfline(halfline), range(range), coversleft(coversleft)
-{
-}
-
-bool Interval::issingular() const
-{
-    return std::all_of(covered.begin(), covered.end(),
-                       [](const HalfSpace& hl) { return hl.arr == Arrangement::SINGULAR; });
-}
 
 std::vector<std::string> genhammingstrings(int strlen, int weight)
 {
@@ -271,7 +257,7 @@ linprog_highs(const std::vector<double>& c, const std::vector<std::vector<double
     return std::make_tuple(solution, fun, status, message);
 }
 
-std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::string>& hamstrings)
+std::vector<Cell> searchmincells_lp(Context& ctx, const QNode& leaf, const std::vector<std::string>& hamstrings)
 {
     std::vector<Cell> cells;
     int dims = leaf.getMBR().size();
@@ -307,7 +293,7 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::st
     bounds[dims] = {0, std::numeric_limits<double>::infinity()}; // Limite per la variabile slack
     for (const auto& hamstr : hamstrings) {
         for (int b = 0; b < hamstr.size(); ++b) {
-            auto hs = halfspaceCache->get(halfspaces[b]);
+            auto hs = ctx.halfspaceCache->get(halfspaces[b]);
             if (hamstr[b] == '0') {
                 for (int i = 0; i < dims; ++i) {
                     A_ub[b][i] = -hs->coeff[i];

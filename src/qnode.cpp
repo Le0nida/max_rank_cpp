@@ -1,72 +1,81 @@
 //
 // Created by leona on 01/08/2024.
 //
-
 #include "qnode.h"
 #include "halfspace.h"
 #include <iostream>
 #include <fstream>
-#include <cstring>  // Per memcpy
-#include "lrucache.h"
+#include <cstring>
 #include <numeric>
 #include "geom.h"
 #include "qtree.h"
+#include "qnode.h"
+#include "lrucache.h"
 
 int normalizedMax = 1;
-int maxCapacity = 10; // sarebbe maxhsnode
+int maxCapacity = 10;
 
-// Counter globale per assegnare ID unici (opzione semplice)
-int globalNodeID = 0;
+QNode::QNode(Context& ctx, int parentID, const std::vector<std::array<double, 2>>& mbr)
+    : ctx(ctx), mbr(mbr), leaf(true), norm(true), order(0), parentID(parentID), nodeID(ctx.globalNodeID++) {}
 
-// Constructor for QNode, initializes the member variables.
-QNode::QNode(int parentID, const std::vector<std::array<double, 2>>& mbr)
-    : mbr(mbr), leaf(true), norm(true), order(0), parentID(parentID), nodeID(globalNodeID++){}
+QNode::QNode(Context& ctx)
+    : ctx(ctx), mbr({}), leaf(true), norm(true), order(0), parentID(-1), nodeID(ctx.globalNodeID++) {}
 
-QNode::QNode()
-    : mbr({}), leaf(true), norm(true), order(0), parentID(0), nodeID(-1){}
+QNode::QNode(QNode&& other) noexcept
+    : ctx(other.ctx), nodeID(other.nodeID), parentID(other.parentID), mbr(std::move(other.mbr)),
+      norm(other.norm), leaf(other.leaf), order(other.order), childrenIDs(std::move(other.childrenIDs)),
+      covered(std::move(other.covered)), halfspaces(std::move(other.halfspaces)) {}
 
+QNode& QNode::operator=(QNode&& other) noexcept {
+    if (this != &other) {
+        nodeID = other.nodeID;
+        parentID = other.parentID;
+        mbr = std::move(other.mbr);
+        norm = other.norm;
+        leaf = other.leaf;
+        order = other.order;
+        childrenIDs = std::move(other.childrenIDs);
+        covered = std::move(other.covered);
+        halfspaces = std::move(other.halfspaces);
+    }
+    return *this;
+}
 
-// Checks if the node is the root of the tree.
+int QNode::getNodeID() const {
+    return nodeID;
+}
+
+int QNode::getParentID() const {
+    return parentID;
+}
+
 bool QNode::isRoot() const {
     return parentID == -1;
 }
 
-// Checks if the node is a leaf (i.e., has no children).
 bool QNode::isLeaf() const {
     return leaf || childrenIDs.empty();
 }
 
-// Computes the order of the node by traversing back up the tree.
 void QNode::setOrder() const {
-    size_t localOrder = covered.size();  // Initialize order with the size of covered halfspaces in the current node.
-    std::shared_ptr<QNode> ref = globalCache.get(parentID);
+    size_t localOrder = covered.size();
+    std::shared_ptr<QNode> ref = ctx.cache->get(parentID);
 
-    // Traverse back up the tree to accumulate the order from parent nodes.
-    while (ref->parentID >= 0) {
+    while (ref && ref->parentID >= 0) {
         localOrder += ref->covered.size();
-        ref = globalCache.get(ref->parentID);
+        ref = ctx.cache->get(ref->parentID);
     }
 
     order = localOrder;
 }
 
-void QNode::clearHalfspaces()
-{
-    if (!halfspaces.empty()) {
-        halfspaces.clear();
-    }
-}
+std::vector<long int> QNode::getCovered() const {
+    std::vector<long int> coveredSpaces = covered;
+    std::shared_ptr<QNode> ref = ctx.cache->get(parentID);
 
-
-// Retrieves the covering halfspaces by traversing back up the tree.
-std::vector<long int> QNode::getCovered() const{
-    std::vector<long int> coveredSpaces = covered;  // Start with halfspaces covered in the current node.
-    std::shared_ptr<QNode> ref = globalCache.get(parentID);;
-
-    // Traverse back up the tree to accumulate the covered halfspaces from parent nodes.
     while (ref && !ref->isRoot()) {
         coveredSpaces.insert(coveredSpaces.end(), ref->covered.begin(), ref->covered.end());
-        ref = globalCache.get(ref->parentID);;
+        ref = ctx.cache->get(ref->parentID);
     }
 
     return coveredSpaces;
@@ -103,11 +112,11 @@ PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double
 }
 
 // Inserts halfspaces into the node and distributes them to children nodes if necessary.
-void QNode::insertHalfspaces(const std::vector<long int>& halfspaces) {
+void QNode::insertHalfspaces(Context& ctx, const std::vector<long int>& halfspaces) {
     size_t num_halfspaces = halfspaces.size();
     for (size_t i = 0; i < num_halfspaces; ++i) {
         long int hsID = halfspaces[i];
-        auto hs = halfspaceCache->get(hsID);
+        auto hs = ctx.halfspaceCache->get(hsID);
         const std::vector<double>& hs_coeff = hs->coeff;
         double hs_known = hs->known;
 
@@ -125,12 +134,12 @@ void QNode::insertHalfspaces(const std::vector<long int>& halfspaces) {
                 // Check if we need to split the node
                 if (this->halfspaces.size() > maxCapacity) {
                     // Split the node
-                    splitNode();
+                    splitNode(ctx);
 
                     // Redistribute the intersected halfspaces among the children
                     for (int childID : childrenIDs) {
-                        auto child = globalCache.get(childID);
-                        child->insertHalfspaces(this->halfspaces);
+                        auto child = ctx.cache->get(childID);
+                        child->insertHalfspaces(ctx, this->halfspaces);
                     }
                     // Clear the intersected halfspaces from this node
                     this->halfspaces.clear();
@@ -138,8 +147,8 @@ void QNode::insertHalfspaces(const std::vector<long int>& halfspaces) {
             } else {
                 // Node is not a leaf, pass the halfspace to children
                 for (int childID : childrenIDs) {
-                    auto child = globalCache.get(childID);
-                    child->insertHalfspaces({hsID}); // Passing single halfspace as vector
+                    auto child = ctx.cache->get(childID);
+                    child->insertHalfspaces(ctx, {hsID}); // Passing single halfspace as vector
                 }
             }
         }/* else if (pos == PositionHS::ABOVE) {
@@ -150,7 +159,7 @@ void QNode::insertHalfspaces(const std::vector<long int>& halfspaces) {
 }
 
 // Split the given node
-void QNode::splitNode() {
+void QNode::splitNode(Context& ctx) {
     /*if (level >= maxLevel) {
         // Do not split if maximum level reached
         return;
@@ -168,8 +177,8 @@ void QNode::splitNode() {
 
     for (const auto& child_mbr : subDivs) {
         // Create new child node
-        auto child = std::make_shared<QNode>(/* appropriate parameters */);
-        child->nodeID = globalNodeID++;
+        auto child = std::make_shared<QNode>(ctx);
+        child->nodeID = ctx.globalNodeID++;
         //child->level = level + 1;
         child->parentID = nodeID;
         child->mbr = child_mbr;
@@ -178,7 +187,7 @@ void QNode::splitNode() {
         if (child->checkNodeValidity()) {
             child->setNorm(true); // Set node as valid
             childrenIDs.push_back(child->getNodeID()); // Add child ID to list
-            globalCache.add(child); // Add child to cache
+            ctx.cache->add(child); // Add child to cache
         } else {
             // Node is invalid, do not add to children
             continue;
@@ -363,4 +372,44 @@ size_t QNode::estimatedSize() const {
     size += sizeof(size_t); // coveredCount
     size += covered.size() * sizeof(long int);
     return size;
+}
+
+void QNode::clearHalfspaces() {
+    halfspaces.clear();
+}
+
+const std::vector<std::array<double, 2>>& QNode::getMBR() const {
+    return mbr;
+}
+
+bool QNode::isNorm() const {
+    return norm;
+}
+
+void QNode::setNorm(bool norm) {
+    this->norm = norm;
+}
+
+void QNode::setLeaf(bool leaf) {
+    this->leaf = leaf;
+}
+
+size_t QNode::getOrder() const {
+    return order;
+}
+
+const std::vector<long int>& QNode::getChildrenIDs() const {
+    return childrenIDs;
+}
+
+void QNode::addChildID(int childID) {
+    childrenIDs.push_back(childID);
+}
+
+const std::vector<long int>& QNode::getHalfspaces() const {
+    return halfspaces;
+}
+
+void QNode::setHalfspaces(std::vector<long int> halfspaces) {
+    this->halfspaces = std::move(halfspaces);
 }

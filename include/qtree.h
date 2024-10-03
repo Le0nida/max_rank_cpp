@@ -10,25 +10,25 @@
 #include <vector>
 #include <array>
 #include <unordered_set>
+#include <memory>
+
+class Context; // Forward declaration
 
 class QTree {
 public:
-    QTree(int dims, int maxhsnode);
+    QTree(int dims, int maxhsnode, Context& ctx);
     void inserthalfspaces(const std::vector<long int>& halfspaces);
     std::vector<std::shared_ptr<QNode>> getleaves();
 
-    bool hasHalfspaceBeenInserted(long int halfspaceID) {
-        return insertedHalfspaces.find(halfspaceID) != insertedHalfspaces.end();
-    }
-    void clearHalfspaceBeenInserted() {
-        insertedHalfspaces.clear();
-    }
+    bool hasHalfspaceBeenInserted(long int halfspaceID);
+    void clearHalfspaceBeenInserted();
 
 private:
-    int dims;  // Dimensionality of the space wrapped by the tree
-    int maxhsnode;  // Maximum number of halfspaces a node can contain before being split up
-    std::array<std::vector<std::vector<double>>, 2> masks;  // Masks used in halfspace insertion
-    std::shared_ptr<QNode> root;  // Reference to root node
+    Context& ctx;
+    int dims;
+    int maxhsnode;
+    std::array<std::vector<std::vector<double>>, 2> masks;
+    std::shared_ptr<QNode> root;
 
     std::shared_ptr<QNode> createroot();
 

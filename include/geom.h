@@ -7,6 +7,7 @@
 
 #include <fstream>
 #include <vector>
+#include <functional>
 
 class Point {
 public:
@@ -15,33 +16,17 @@ public:
     std::vector<double> coord;
     int dims;
 
-    // Operatore di uguaglianza per confrontare due punti
     bool operator==(const Point& other) const {
-        return coord == other.coord;  // Confronta i vettori di coordinate
+        return coord == other.coord;
     }
 
-    // Serializza l'oggetto Point su disco
-    void saveToDisk(std::ofstream& out) const {
-        out.write(reinterpret_cast<const char*>(&id), sizeof(id));
-        out.write(reinterpret_cast<const char*>(&dims), sizeof(dims));
+    // Serialization methods
+    void saveToDisk(std::ofstream& out) const;
+    void loadFromDisk(std::ifstream& in);
+};
 
-        // Serializza le coordinate
-        size_t coordSize = coord.size();
-        out.write(reinterpret_cast<const char*>(&coordSize), sizeof(coordSize));
-        out.write(reinterpret_cast<const char*>(coord.data()), coordSize * sizeof(double));
-    }
-
-    // Carica l'oggetto Point da disco
-    void loadFromDisk(std::ifstream& in) {
-        in.read(reinterpret_cast<char*>(&id), sizeof(id));
-        in.read(reinterpret_cast<char*>(&dims), sizeof(dims));
-
-        // Carica le coordinate
-        size_t coordSize;
-        in.read(reinterpret_cast<char*>(&coordSize), sizeof(coordSize));
-        coord.resize(coordSize);
-        in.read(reinterpret_cast<char*>(coord.data()), coordSize * sizeof(double));
-    }
+struct PointHash {
+    std::size_t operator()(const Point& p) const;
 };
 
 std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> genmasks(int dims);

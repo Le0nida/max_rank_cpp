@@ -6,17 +6,21 @@
 #define CELL_H
 
 #include <string>
-#include <utility> // For std::pair
+#include <utility>
 #include <vector>
 #include "geom.h"
 #include "halfspace.h"
 #include "qnode.h"
 
+class Context; // Forward declaration
+
 class Cell {
 public:
-    Cell(int order, const std::string& mask, const std::vector<long>& covered, const std::vector<long>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr, const Point& feasible_pnt);
+    Cell(int order, const std::string& mask, const std::vector<long>& covered,
+         const std::vector<long>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr,
+         const Point& feasible_pnt);
 
-    bool issingular() const;
+    bool issingular(Context& ctx) const;
 
     int order;
     std::string mask;
@@ -26,19 +30,7 @@ public:
     Point feasible_pnt;
 };
 
-class Interval {
-public:
-    Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft);
-
-    bool issingular() const;
-
-    HalfLine halfline;
-    std::pair<double, double> range;
-    int coversleft;
-    std::vector<HalfSpace> covered;
-};
-
 std::vector<std::string> genhammingstrings(int strlen, int weight);
-std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::string>& hamstrings);
+std::vector<Cell> searchmincells_lp(Context& ctx, const QNode& leaf, const std::vector<std::string>& hamstrings);
 
 #endif // CELL_H
