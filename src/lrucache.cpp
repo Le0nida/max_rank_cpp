@@ -17,8 +17,8 @@ LRUCache::LRUCache() {
         std::cerr << "Failed to retrieve available memory. Using default cache size of 10,000." << std::endl;
         cacheSize = 10000;
     } else {
-        // Use 10% of available memory for cache
-        size_t cacheMemoryUsage = availableMemory / 10;
+        // Use 20% of available memory for cache
+        size_t cacheMemoryUsage = availableMemory / 5;
         // Estimate the size of a QNode in memory (this is a rough estimate)
         size_t estimatedNodeSize = sizeof(QNode) + 1024; // Adjust as necessary
         cacheSize = static_cast<int>(cacheMemoryUsage / estimatedNodeSize);
@@ -59,7 +59,7 @@ LRUCache::~LRUCache() {
 }
 
 void LRUCache::openMemoryMappedFile() {
-    const size_t MAX_FILE_SIZE = 6ULL * 1024ULL * 1024ULL * 1024ULL; // 6 GB
+    const size_t MAX_FILE_SIZE = 10ULL * 1024ULL * 1024ULL * 1024ULL; // 6 GB
 
     // Open or create the file
     hFile = CreateFileA(dataFilePath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -239,4 +239,26 @@ void LRUCache::cleanup() {
     for (auto& future : futures) {
         future.get();
     }
+}
+
+void LRUCache::clear() {
+    // Lock the mutex to ensure thread safety while clearing the cache
+    std::lock_guard<std::mutex> lock(ioMutex);
+
+    // Clear the LRU list
+    lruList.clear();
+
+    // Clear the cache map
+    cache.clear();
+
+    // Clear the locked nodes set
+    lockedNodes.clear();
+
+    // Clear any pending operations (if any)
+    pendingOperations.clear();
+
+    // Optionally, reset the current offset for the memory-mapped file (if required)
+    currentOffset = 0;
+
+    std::cout << "LRUCache cleared successfully." << std::endl;
 }

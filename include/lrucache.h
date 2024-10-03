@@ -66,6 +66,7 @@ private:
     void openMemoryMappedFile();
     void closeMemoryMappedFile();
 
+
 public:
     explicit LRUCache();
     ~LRUCache();
@@ -79,6 +80,7 @@ public:
     void lockNode(int nodeID);     // Lock the node in cache
     void unlockNode(int nodeID);   // Unlock the node in cache
 
+    void clear();
     void cleanup();
 };
 
