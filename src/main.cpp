@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <iomanip>
 #include <numeric>
 #include <sstream>
 #include <vector>
@@ -79,18 +80,34 @@ vector<int> readQuery(const string& filename) {
     return query;
 }
 
-void writeCSV(const string& filename, const vector<vector<double>>& data, const vector<string>& headers) {
-    ofstream file(filename);
-    for (const auto& header : headers) {
-        file << header << ",";
-    }
-    file << endl;
+void writeCSV(const std::string& filename, const std::vector<std::vector<double>>& data, const std::vector<std::string>& headers) {
+    std::ofstream file(filename);
 
-    for (const auto& row : data) {
-        for (const auto& val : row) {
-            file << val << ",";
+    // Set the desired precision
+    file << std::fixed << std::setprecision(15); // Adjust precision as needed
+
+    // Write headers
+    for (size_t i = 0; i < headers.size(); ++i) {
+        file << headers[i];
+        if (i < headers.size() - 1) {
+            file << ",";
         }
-        file << endl;
+    }
+    file << "\n";
+
+    // Write data
+    for (const auto& row : data) {
+        if (!row.empty()) {
+            // Write the id as an integer
+            int id = static_cast<int>(row[0]);
+            file << id;
+
+            // Write the remaining values as doubles with high precision
+            for (size_t j = 1; j < row.size(); ++j) {
+                file << "," << row[j];
+            }
+            file << "\n"; // No extra comma at the end
+        }
     }
 }
 
