@@ -15,7 +15,6 @@
 #include "qtree.h"
 #include "query.h"
 #include "cell.h"
-#include "lrucache.h"
 
 using namespace std;
 
@@ -139,7 +138,6 @@ int main(int argc, char* argv[]) {
             halfspaceCache = nullptr;
             pointToHalfSpaceCache.clear();
             globalNodeID = 0;
-            globalCache.clear(); // You might need to implement a clear method
             cout << "#  Processing data point " << q << "  #" << endl;
             int idx = q - 1;  // Assuming query contains 1-based indices
 

@@ -8,9 +8,11 @@
 #include "cell.h"
 #include "qtree.h"
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <limits>
 
+int numOfSubdivisions = 0;
 
 // Definisci e inizializza le variabili globali
 HalfSpaceCache* halfspaceCache = nullptr;
@@ -18,11 +20,10 @@ std::unordered_map<Point, long, PointHash> pointToHalfSpaceCache;
 
 std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
 
+    numOfSubdivisions = (int) pow(2.0, p.dims - 1);
     QTree qt(p.dims - 1, 10);
     std::vector<Point> dominators = getdominators(data, p);
     std::vector<Point> incomp = getincomparables(data, p);
-
-    qt.clearHalfspaceBeenInserted();
 
     // Inizializzo la cache per gli halfspaces
     initializeCache(data.size());
@@ -51,11 +52,11 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted" << std::endl;
         }
 
-        std::vector<std::shared_ptr<QNode>> new_leaves = qt.getleaves();
+        std::vector<QNode*> new_leaves = qt.getleaves();
         for (auto _leaf : new_leaves) {
             _leaf->setOrder();
         }
-        std::sort(new_leaves.begin(), new_leaves.end(), [](std::shared_ptr<QNode> a, std::shared_ptr<QNode> b) { return a->getOrder() < b->getOrder(); });
+        std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->getOrder() < b->getOrder(); });
 
         return std::make_pair(new_sky, new_leaves);
     };
