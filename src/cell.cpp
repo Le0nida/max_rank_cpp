@@ -98,6 +98,41 @@ LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* 
 {
     auto* result = new LinprogResult;
 
+    /*
+    std::cout << "\n\nCC\n" << std::endl;
+    for (int k = 0; k < 4; k++)
+    {
+        std::cout << c[k] << std::endl;
+    }
+
+    std::cout << "\n\nbounds\n" << std::endl;
+    for (int k = 0; k < 8; k++)
+    {
+        std::cout << bounds[k] << std::endl;
+
+    }
+
+    std::cout << "\n\nb_ub\n" << std::endl;
+    for (int k = 0; k < 11; k++)
+    {
+        std::cout << b_ub[k] << std::endl;
+    }
+
+    std::cout << "\n\nA_ub\n" << std::endl;
+    int j = 0;
+    for (int k = 0; k < (11) * 4; k++)
+    {
+        std::cout << A_ub[k] << ",";
+        j++;
+
+        if (j == 4)
+        {
+            std::cout << std::endl;
+            j = 0;
+        }
+
+    }*/
+
     Highs highs;
 
     // Disabilita l'output a console di HiGHS
@@ -360,40 +395,44 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
     bounds[2 * dims] = 0.0; // Limite inferiore per la variabile slack
     bounds[2 * dims + 1] = kHighsInf; // Limite superiore per la variabile slack
 
-    // Configurazione delle matrici A_ub e b_ub
+    // Definizione del numero di vincoli
     int num_constraints = numHalfspaces + 1;
+
+    // Alloca memoria per A_ub e b_ub (ma non inizializzarli qui)
     double* A_ub = (double*)malloc(num_constraints * num_vars * sizeof(double));
     double* b_ub = (double*)malloc(num_constraints * sizeof(double));
 
-    // Inizializzazione di A_ub e b_ub
-    for (int i = 0; i < num_constraints; ++i) {
-        for (int j = 0; j < num_vars; ++j) {
-            A_ub[i * num_vars + j] = 0.0;
-        }
-    }
-    // Ultima riga di A_ub
-    for (int j = 0; j < dims; ++j) {
-        A_ub[numHalfspaces * num_vars + j] = 1.0;
-    }
-    A_ub[numHalfspaces * num_vars + dims] = 0.0;
-    b_ub[numHalfspaces] = 1.0;
-
     for (int h = 0; h < numHamstrings; ++h) {
         char* hamstr = hamstrings[h];
-        //std::cout << hamstr << std::endl;
+
+        // **Re-inizializza A_ub e b_ub per ogni hamstr**
+        // Inizializzazione di A_ub e b_ub
+        for (int i = 0; i < num_constraints; ++i) {
+            for (int j = 0; j < num_vars; ++j) {
+                A_ub[i * num_vars + j] = 0.0;
+            }
+            b_ub[i] = 0.0; // Assicurati di inizializzare b_ub
+        }
+        // Ultima riga di A_ub (somma delle variabili <= 1)
+        for (int j = 0; j < dims; ++j) {
+            A_ub[numHalfspaces * num_vars + j] = 1.0;
+        }
+        A_ub[numHalfspaces * num_vars + dims] = 0.0;
+        b_ub[numHalfspaces] = 1.0;
+
         for (int b = 0; b < numHalfspaces; ++b) {
             HalfSpace* hs = halfspaces[b];
             if (hamstr[b] == '0') {
                 for (int i = 0; i < dims; ++i) {
                     A_ub[b * num_vars + i] = -hs->coeff[i];
                 }
-                A_ub[b * num_vars + dims] = -1.0;
+                A_ub[b * num_vars + dims] = 1.0; // **Corretto il segno**
                 b_ub[b] = -hs->known;
             } else {
                 for (int i = 0; i < dims; ++i) {
                     A_ub[b * num_vars + i] = hs->coeff[i];
                 }
-                A_ub[b * num_vars + dims] = -1.0;
+                A_ub[b * num_vars + dims] = 1.0; // **Corretto il segno**
                 b_ub[b] = hs->known;
             }
         }
@@ -408,7 +447,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
             for (int i = 0; i < dims; ++i) {
                 feasible_coords[i] = solution[i];
             }
-            Point feasible_pnt( feasible_coords, dims);
+            Point feasible_pnt(feasible_coords, dims);
             free(feasible_coords);
 
             // Crea un nuovo Cell e aggiungilo alla lista
