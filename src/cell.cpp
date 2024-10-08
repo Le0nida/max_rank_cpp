@@ -195,17 +195,101 @@ char** genhammingstrings(int strlen, int weight, int& numStrings) {
             decstr[size++] = 1 << b;
         }
     } else {
-        // Implementazione per weight > 1 (non dettagliata per brevità)
-        // Dovrai implementare la logica per generare le stringhe con peso di Hamming arbitrario
-        // ...
+        int halfmax = (1 << (strlen - 1)) - 1;
+        int curr_weight = 2;
+
+        // Aggiungi i bit di base
+        for (int b = 1; b < strlen; ++b) {
+            if (size >= capacity) {
+                capacity *= 2;
+                decstr = (int*)realloc(decstr, capacity * sizeof(int));
+            }
+            decstr[size++] = (1 << b) + 1;
+        }
+
+        int* bases = (int*)malloc(size * sizeof(int));
+        memcpy(bases, decstr, size * sizeof(int));
+        int base_size = size;
+
+        // Rimuovi gli elementi > halfmax
+        int valid_size = 0;
+        for (int i = 0; i < base_size; ++i) {
+            if (bases[i] <= halfmax) {
+                bases[valid_size++] = bases[i];
+            }
+        }
+
+        base_size = valid_size;
+
+        while (true) {
+            // Genera nuovi bit shiftati
+            while (base_size > 0) {
+                int shifts_capacity = 1024;
+                int shifts_size = 0;
+                int* shifts = (int*)malloc(shifts_capacity * sizeof(int));
+
+                for (int i = 0; i < base_size; ++i) {
+                    int shifted = bases[i] << 1;
+                    if (shifted <= halfmax) {
+                        if (shifts_size >= shifts_capacity) {
+                            shifts_capacity *= 2;
+                            shifts = (int*)realloc(shifts, shifts_capacity * sizeof(int));
+                        }
+                        shifts[shifts_size++] = shifted;
+                    }
+                }
+
+                // Aggiungi i risultati
+                for (int i = 0; i < shifts_size; ++i) {
+                    if (size >= capacity) {
+                        capacity *= 2;
+                        decstr = (int*)realloc(decstr, capacity * sizeof(int));
+                    }
+                    decstr[size++] = shifts[i];
+                }
+
+                free(bases);
+                bases = shifts;
+                base_size = shifts_size;
+            }
+
+            if (curr_weight < weight) {
+                int new_bases_capacity = 1024;
+                int new_bases_size = 0;
+                int* new_bases = (int*)malloc(new_bases_capacity * sizeof(int));
+
+                for (int i = 0; i < size; ++i) {
+                    int new_dec = (decstr[i] << 1) + 1;
+                    if (new_dec <= (1 << strlen) - 1) {
+                        if (new_bases_size >= new_bases_capacity) {
+                            new_bases_capacity *= 2;
+                            new_bases = (int*)realloc(new_bases, new_bases_capacity * sizeof(int));
+                        }
+                        new_bases[new_bases_size++] = new_dec;
+                    }
+                }
+
+                for (int i = 0; i < new_bases_size; ++i) {
+                    if (size >= capacity) {
+                        capacity *= 2;
+                        decstr = (int*)realloc(decstr, capacity * sizeof(int));
+                    }
+                    decstr[size++] = new_bases[i];
+                }
+
+                free(bases);
+                bases = new_bases;
+                base_size = new_bases_size;
+                curr_weight++;
+            } else {
+                free(bases);
+                break;
+            }
+        }
     }
 
     numStrings = size;
     char** hamming_strings = (char**)malloc(numStrings * sizeof(char*));
-
-    int format_len = strlen + 1;
-    char format[16];
-    snprintf(format, sizeof(format), "%%0%dd", strlen);
 
     for (int i = 0; i < numStrings; ++i) {
         hamming_strings[i] = (char*)malloc((strlen + 1) * sizeof(char));
@@ -296,6 +380,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
 
     for (int h = 0; h < numHamstrings; ++h) {
         char* hamstr = hamstrings[h];
+        //std::cout << hamstr << std::endl;
         for (int b = 0; b < numHalfspaces; ++b) {
             HalfSpace* hs = halfspaces[b];
             if (hamstr[b] == '0') {
