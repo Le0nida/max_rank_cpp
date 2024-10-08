@@ -44,3 +44,4 @@ CMakeSettings.json
 *.zip
 /maxrank_leveldb
 /maxrank_release_mmfiles
+/maxrank_normal
