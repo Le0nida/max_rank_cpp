@@ -3,6 +3,9 @@
 //
 
 #include "maxrank.h"
+
+#include <algorithm>
+
 #include "query.h"
 #include "halfspace.h"
 #include "cell.h"
@@ -63,7 +66,9 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
         }
 
         // Ordina le foglie in base all'ordine
-        // Implementa una funzione di ordinamento se necessario
+        std::sort(leaves, leaves + numLeaves, [](QNode* a, QNode* b) {
+        return a->order < b->order;  // Ordina in ordine crescente
+    });
     };
 
     Point** sky = nullptr;
