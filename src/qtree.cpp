@@ -3,63 +3,69 @@
 //
 
 #include "qtree.h"
-#include "qnode.h"
-#include "geom.h"
-#include "halfspace.h"
-#include <vector>
-#include <array>
-#include <iostream>
-#include <numeric>
+#include <cstdlib> // For malloc, free
 
 extern int numOfSubdivisions;
 
 // Constructor for QTree
 QTree::QTree(int dims, int maxhsnode) : dims(dims), maxhsnode(maxhsnode) {
-    auto masks_pair = genmasks(dims);
-    masks = {masks_pair.first, masks_pair.second};
-    root = createroot();
+    createroot();
 }
 
-// Create the root node and split it
-QNode* QTree::createroot() {
-    std::vector<std::array<double, 2>> mbr(dims, {0.0, 1.0});
-    auto* root = new QNode(nullptr, mbr);
+void QTree::createroot() {
+    // Dynamic allocation for MBR (C-style 2D array)
+    double** mbr = (double**)malloc(dims * sizeof(double*));
+
+    for (int i = 0; i < dims; ++i) {
+        mbr[i] = (double*)malloc(2 * sizeof(double));
+        mbr[i][0] = 0.0;  // Lower bound
+        mbr[i][1] = 1.0;  // Upper bound
+    }
+
+    // Create root with dynamically allocated MBR
+    root = new QNode(nullptr, mbr, dims);
+
+    // Split the root node
     root->splitNode();
-    return root;
 }
 
-// Insert halfspaces into the tree
-void QTree::inserthalfspaces(const std::vector<long int>& halfspaces) {
-    if (halfspaces.empty()) return;
+void QTree::inserthalfspaces(HalfSpace** halfspaces, int numHalfspaces) {
+    if (numHalfspaces == 0) return;
 
     // Start with the root node
-    root->insertHalfspaces(halfspaces);
+    root->insertHalfspaces(halfspaces, numHalfspaces);
 }
 
-// Retrieve all leaves of the QTree
-std::vector<QNode*> QTree::getleaves() {
-    std::vector<QNode*> leaves;
-    std::vector<QNode*> to_search = {root};  // Contiene i nodi da elaborare
+QNode** QTree::getleaves(int& numLeaves) {
+    QNode** leaves = nullptr;
+    numLeaves = 0;
+    QNode** to_search = (QNode**)malloc(sizeof(QNode*));
+    int numToSearch = 1;
+    to_search[0] = root;
 
-    while (!to_search.empty()) {
-        QNode* current = to_search.back();
-        to_search.pop_back();
+    while (numToSearch > 0) {
+        QNode* current = to_search[numToSearch - 1];
+        numToSearch--;
 
-        if (current->isNorm()) {
+        if (current->norm) {
             if (current->isLeaf()) {
-                leaves.push_back(current);  // Se è una foglia, aggiungila alla lista
+                numLeaves++;
+                leaves = (QNode**)realloc(leaves, numLeaves * sizeof(QNode*));
+                leaves[numLeaves - 1] = current;
             } else {
                 for (int i = 0; i < numOfSubdivisions; i++) {
                     QNode* child = current->children[i];
-                    // Verifica che il puntatore al figlio non sia nullo
-                    if (!child) {
-                        continue;
+                    // Verify that the child pointer is not null
+                    if (child) {
+                        numToSearch++;
+                        to_search = (QNode**)realloc(to_search, numToSearch * sizeof(QNode*));
+                        to_search[numToSearch - 1] = child;
                     }
-                    to_search.push_back(child);
                 }
             }
         }
     }
+    free(to_search);
 
     return leaves;
 }

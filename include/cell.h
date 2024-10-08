@@ -5,25 +5,19 @@
 #ifndef CELL_H
 #define CELL_H
 
-#include <string>
-#include <utility> // For std::pair
+#include <utility>
 #include <vector>
+
 #include "geom.h"
 #include "halfspace.h"
 #include "qnode.h"
 
-class Cell {
-public:
-    Cell(int order, const std::string& mask, const std::vector<long>& covered, const std::vector<long>& halfspaces, const std::vector<std::array<double, 2>>& leaf_mbr, const Point& feasible_pnt);
-
-    bool issingular() const;
-
-    int order;
-    std::string mask;
-    std::vector<long> covered;
-    std::vector<long> halfspaces;
-    std::vector<std::array<double, 2>> leaf_mbr;
-    Point feasible_pnt;
+// Struttura per il risultato del problema di programmazione lineare
+struct LinprogResult {
+    double* x;
+    double fun;
+    int status;
+    char message[128];
 };
 
 class Interval {
@@ -38,7 +32,39 @@ public:
     std::vector<HalfSpace> covered;
 };
 
-std::vector<std::string> genhammingstrings(int strlen, int weight);
-std::vector<Cell> searchmincells_lp(const QNode& leaf, const std::vector<std::string>& hamstrings);
+// Classe Cell ottimizzata
+class Cell {
+public:
+    // Costruttore
+    Cell(int order, const char* mask, HalfSpace** covered, int numCovered,
+         HalfSpace** halfspaces, int numHalfspaces, double** leaf_mbr, int dims,
+         const Point& feasible_pnt);
+
+    // Distruttore
+    ~Cell();
+
+    // Funzione per verificare se il cell è singolare
+    bool issingular() const;
+
+    int order;
+    char* mask;
+    HalfSpace** covered;
+    int numCovered;
+    HalfSpace** halfspaces;
+    int numHalfspaces;
+    double** leaf_mbr;
+    int dims;
+    Point feasible_pnt;
+};
+
+// Funzioni per la programmazione lineare
+LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* b_ub,
+                             const double* bounds, int num_vars, int num_constraints);
+
+void free_linprog_result(LinprogResult* result);
+
+// Funzioni per generare stringhe di Hamming e cercare minimi cell
+char** genhammingstrings(int strlen, int weight, int& numStrings);
+Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings, int& numCells);
 
 #endif // CELL_H

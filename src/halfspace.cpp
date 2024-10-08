@@ -2,13 +2,10 @@
 // Created by leona on 06/08/2024.
 //
 
-#include "geom.h"
 #include "halfspace.h"
-#include <iostream>
-#include <cassert>
-#include <limits>
-#include <memory>
-#include <numeric> // Per std::inner_product
+#include <cstring> // Per memcpy
+#include <cmath>
+#include <numeric> // Per inner_product
 
 
 HalfLine::HalfLine(const Point& pnt) : pnt(pnt), dims(2), arr(Arrangement::AUGMENTED) {
@@ -20,75 +17,77 @@ double HalfLine::get_y(double x) const {
     return m * x + q;
 }
 
-HalfSpace::HalfSpace(const long int pntID, const std::vector<double>& coeff, double known)
-    : pntID(pntID), coeff(coeff), known(known), dims(coeff.size()), arr(Arrangement::AUGMENTED) {}
+HalfSpace::HalfSpace(long int pntID, double* coeff, double known, int dims)
+    : pntID(pntID), known(known), arr(AUGMENTED), dims(dims)
+{
+    this->coeff = (double*)malloc(dims * sizeof(double));
+    memcpy(this->coeff, coeff, dims * sizeof(double));
+}
 
-HalfSpace::HalfSpace()
-    : pntID(-1), coeff(0), known(0), dims(0), arr(Arrangement::AUGMENTED) {}
+HalfSpace::~HalfSpace() {
+    if (coeff) {
+        free(coeff);
+        coeff = nullptr;
+    }
+}
 
 bool HalfSpace::operator==(const HalfSpace& other) const {
-    return pntID == other.pntID && coeff == other.coeff && known == other.known && arr == other.arr && dims == other.dims;
-}
+    if (pntID != other.pntID || known != other.known || arr != other.arr || dims != other.dims)
+        return false;
 
-Point find_halflines_intersection(const HalfLine& r, const HalfLine& s) {
-    if (r.m == s.m) {
-        return Point({std::numeric_limits<double>::infinity(), std::numeric_limits<double>::infinity()});
-    } else {
-        double x = (s.q - r.q) / (r.m - s.m);
-        return Point({x, r.get_y(x)});
+    for (int i = 0; i < dims; ++i) {
+        if (coeff[i] != other.coeff[i])
+            return false;
     }
+    return true;
 }
 
-Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfspace) {
-    double val = std::inner_product(halfspace.coeff.begin(), halfspace.coeff.end(), point.coord.begin(), 0.0);
+// Generate halfspaces from a point and a set of records
+HalfSpace** genhalfspaces(const Point& p, Point** records, int numRecords, int& numHalfSpaces) {
+    numHalfSpaces = numRecords;
+    HalfSpace** halfspaces = (HalfSpace**)malloc(numHalfSpaces * sizeof(HalfSpace*));
 
-    if (val < halfspace.known) {
-        return Position::POS_IN;
-    } else if (val > halfspace.known) {
-        return Position::POS_OUT;
-    } else {
-        return Position::POS_ON;
-    }
-}
+    double p_d = p.coord[p.dims - 1];  // Last coordinate of p
+    double* p_i = p.coord;  // Coordinates of p, excluding the last
 
-std::vector<long> genhalfspaces(const Point& p, const std::vector<Point>& records) {
-    // Preallocazione della lista degli halfspaceID in base al numero di records (dimensione fissa)
-    std::vector<long> halfspaceIDs;
-    halfspaceIDs.reserve(records.size());
+    int dims = p.dims - 1;
 
-    double p_d = p.coord.back();  // Ultima coordinata di p (costante)
-    std::vector<double> p_i(p.coord.begin(), p.coord.end() - 1);  // Coordinate rimanenti di p
+    for (int idx = 0; idx < numHalfSpaces; ++idx) {
+        Point* r = records[idx];
+        double r_d = r->coord[r->dims - 1];
+        double* r_i = r->coord;
 
-    for (const auto& r : records) {
-        // Verifica se il punto "r" è già stato convertito in half-space
-        if (pointToHalfSpaceCache.find(r) != pointToHalfSpaceCache.end()) {
-            // Se esiste già, aggiungi solo l'ID dell'halfspace corrispondente
-            halfspaceIDs.push_back(pointToHalfSpaceCache[r]);
-            // TODO modifica riportando solo i nuovi hs
-            continue;  // Salta la creazione dell'halfspace per questo record
-        }
-
-        double r_d = r.coord.back();  // Ultima coordinata di r (costante)
-        std::vector<double> r_i(r.coord.begin(), r.coord.end() - 1);  // Coordinate rimanenti di r
-
-        // Calcolo dei coefficienti dell'halfspace
-        std::vector<double> coeff(r_i.size());
-        for (size_t i = 0; i < r_i.size(); ++i) {
+        // Calculate coefficients
+        double* coeff = (double*)malloc(dims * sizeof(double));
+        for (int i = 0; i < dims; ++i) {
             coeff[i] = (r_i[i] - r_d) - (p_i[i] - p_d);
         }
 
-        long int id = r.id;
-        // Crea il nuovo halfspace
-        auto halfspace = std::make_shared<HalfSpace>(id, coeff, p_d - r_d);
+        long int id = r->id;
 
-        // Inserisci l'halfspace nella cache globale
-        halfspaceCache->insert(id, halfspace);
+        // Create new HalfSpace
+        HalfSpace* hs = new HalfSpace(id, coeff, p_d - r_d, dims);
+        free(coeff); // Free coeff as it has been copied in HalfSpace
 
-        // Aggiungi l'ID dell'halfspace alla lista e memorizza il mapping nel punto cache
-        halfspaceIDs.push_back(id);
-        pointToHalfSpaceCache[r] = id;  // Mappa il punto all'ID dell'halfspace
+        halfspaces[idx] = hs;
     }
 
-    // Restituisci la lista degli ID degli halfspaces
-    return halfspaceIDs;
+    return halfspaces;
+}
+
+// Implementazione di altre funzioni
+
+Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfspace) {
+    double val = 0.0;
+    for (int i = 0; i < halfspace.dims; ++i) {
+        val += halfspace.coeff[i] * point.coord[i];
+    }
+
+    if (val < halfspace.known) {
+        return POS_IN;
+    } else if (val > halfspace.known) {
+        return POS_OUT;
+    } else {
+        return POS_ON;
+    }
 }

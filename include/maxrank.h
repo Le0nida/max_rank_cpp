@@ -5,10 +5,10 @@
 #ifndef MAXRANK_H
 #define MAXRANK_H
 
-#include <vector>
 #include "geom.h"
 #include "cell.h"
 
-std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p);
+// Definisci la funzione aa_hd
+std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p);
 
 #endif // MAXRANK_H

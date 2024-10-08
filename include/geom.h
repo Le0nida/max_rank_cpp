@@ -5,45 +5,26 @@
 #ifndef GEOM_H
 #define GEOM_H
 
-#include <fstream>
-#include <vector>
+#include <cstdlib> // Per malloc e free
 
 class Point {
 public:
-    Point(const std::vector<double>& coord, int id = -1);
+    // Costruttore
+    Point(double* coord, int dims, int id = -1);
+    // Distruttore
+    ~Point();
+
+    // Proprietà pubbliche
     int id;
-    std::vector<double> coord;
+    double* coord;
     int dims;
 
     // Operatore di uguaglianza per confrontare due punti
-    bool operator==(const Point& other) const {
-        return coord == other.coord;  // Confronta i vettori di coordinate
-    }
-
-    // Serializza l'oggetto Point su disco
-    void saveToDisk(std::ofstream& out) const {
-        out.write(reinterpret_cast<const char*>(&id), sizeof(id));
-        out.write(reinterpret_cast<const char*>(&dims), sizeof(dims));
-
-        // Serializza le coordinate
-        size_t coordSize = coord.size();
-        out.write(reinterpret_cast<const char*>(&coordSize), sizeof(coordSize));
-        out.write(reinterpret_cast<const char*>(coord.data()), coordSize * sizeof(double));
-    }
-
-    // Carica l'oggetto Point da disco
-    void loadFromDisk(std::ifstream& in) {
-        in.read(reinterpret_cast<char*>(&id), sizeof(id));
-        in.read(reinterpret_cast<char*>(&dims), sizeof(dims));
-
-        // Carica le coordinate
-        size_t coordSize;
-        in.read(reinterpret_cast<char*>(&coordSize), sizeof(coordSize));
-        coord.resize(coordSize);
-        in.read(reinterpret_cast<char*>(coord.data()), coordSize * sizeof(double));
-    }
+    bool operator==(const Point& other) const;
 };
 
-std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> genmasks(int dims);
+// Funzione per generare le maschere
+void genmasks(int dims, double***& pts_mask, int& num_pts, double***& nds_mask, int& num_nds);
 
 #endif // GEOM_H
+

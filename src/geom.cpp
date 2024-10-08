@@ -3,71 +3,136 @@
 //
 
 #include "geom.h"
-#include <vector>
-#include <array>
-#include <numeric>
+#include <cmath>
+#include <cstring> // Per memcpy
 #include <bitset>
-#include <iostream>
 
+Point::Point(double* coord, int dims, int id) : id(id), dims(dims) {
+    this->coord = (double*)malloc(dims * sizeof(double));
+    memcpy(this->coord, coord, dims * sizeof(double));
+}
 
-Point::Point(const std::vector<double>& coord, int id) : id(id), coord(coord), dims(coord.size()) {}
+Point::~Point() {
+    if (coord) {
+        free(coord);
+        coord = nullptr;
+    }
+}
 
+bool Point::operator==(const Point& other) const {
+    if (dims != other.dims) {
+        return false;
+    }
+    for (int i = 0; i < dims; ++i) {
+        if (coord[i] != other.coord[i]) {
+            return false;
+        }
+    }
+    return true;
+}
 
-std::pair<std::vector<std::vector<double>>, std::vector<std::vector<double>>> genmasks(int dims) {
-    std::vector<double> incr(dims, 0.5);
-    std::vector<std::vector<double>> pts(1, std::vector<double>(dims, 0.5));
+// Funzione per generare le maschere
+void genmasks(int dims, double***& pts_mask, int& num_pts, double***& nds_mask, int& num_nds) {
+    int capacity = 1024;
+    num_pts = 1;
+    pts_mask = (double***)malloc(capacity * sizeof(double**));
+    pts_mask[0] = (double**)malloc(dims * sizeof(double*));
+    for (int i = 0; i < dims; ++i) {
+        pts_mask[0][i] = (double*)malloc(sizeof(double));
+        pts_mask[0][i][0] = 0.5;
+    }
 
-    // Generate points
+    double* incr = (double*)malloc(dims * sizeof(double));
+    for (int i = 0; i < dims; ++i) {
+        incr[i] = 0.5;
+    }
+
+    // Genera i punti
     for (int d = 0; d < dims; ++d) {
-        std::vector<std::vector<double>> lower = pts;
-        std::vector<std::vector<double>> higher = pts;
-        for (auto& p : lower) p[d] -= incr[d];
-        for (auto& p : higher) p[d] += incr[d];
-        pts.insert(pts.end(), lower.begin(), lower.end());
-        pts.insert(pts.end(), higher.begin(), higher.end());
-    }
+        int current_num_pts = num_pts;
+        for (int p = 0; p < current_num_pts; ++p) {
+            // Punto lower
+            double** lower = (double**)malloc(dims * sizeof(double*));
+            // Punto higher
+            double** higher = (double**)malloc(dims * sizeof(double*));
 
-    // Calculate pts_mask
-    std::vector<std::vector<double>> pts_mask(pts.size(), std::vector<double>(dims));
-    for (size_t i = 0; i < pts.size(); ++i) {
-        for (int d = 0; d < dims; ++d) {
-            pts_mask[i][d] = (pts[i][d] - incr[d]) / incr[d];
+            for (int i = 0; i < dims; ++i) {
+                lower[i] = (double*)malloc(sizeof(double));
+                higher[i] = (double*)malloc(sizeof(double));
+                if (i == d) {
+                    lower[i][0] = pts_mask[p][i][0] - incr[i];
+                    higher[i][0] = pts_mask[p][i][0] + incr[i];
+                } else {
+                    lower[i][0] = pts_mask[p][i][0];
+                    higher[i][0] = pts_mask[p][i][0];
+                }
+            }
+
+            // Aggiungi lower e higher a pts_mask
+            if (num_pts + 2 > capacity) {
+                capacity *= 2;
+                pts_mask = (double***)realloc(pts_mask, capacity * sizeof(double**));
+            }
+            pts_mask[num_pts++] = lower;
+            pts_mask[num_pts++] = higher;
         }
     }
 
-    // Generate mbr
-    std::vector<std::vector<std::array<double, 2>>> mbr(1 << dims, std::vector<std::array<double, 2>>(dims));
-    for (int quad = 0; quad < (1 << dims); ++quad) {
-        std::bitset<32> qbin(quad);
-        std::vector<double> child_mindim(dims);
-        std::vector<double> child_maxdim(dims);
-
+    // Calcola pts_mask
+    for (int p = 0; p < num_pts; ++p) {
         for (int d = 0; d < dims; ++d) {
-            child_mindim[d] = qbin[d] ? 0.5 : 0.0;
-            child_maxdim[d] = qbin[d] ? 1.0 : 0.5;
-        }
-
-        for (int d = 0; d < dims; ++d) {
-            mbr[quad][d] = {child_mindim[d], child_maxdim[d]};
+            pts_mask[p][d][0] = (pts_mask[p][d][0] - incr[d]) / incr[d];
         }
     }
 
-    // Calculate nds_mask
-    std::vector<std::vector<double>> nds_mask(pts.size(), std::vector<double>(1 << dims, 0));
-    for (size_t p = 0; p < pts.size(); ++p) {
-        for (int n = 0; n < (1 << dims); ++n) {
+    // Genera mbr
+    num_nds = 1 << dims;
+    double**** mbr = (double****)malloc(num_nds * sizeof(double***));
+    for (int quad = 0; quad < num_nds; ++quad) {
+        mbr[quad] = (double***)malloc(dims * sizeof(double**));
+        for (int d = 0; d < dims; ++d) {
+            mbr[quad][d] = (double**)malloc(2 * sizeof(double*));
+            mbr[quad][d][0] = (double*)malloc(sizeof(double));
+            mbr[quad][d][1] = (double*)malloc(sizeof(double));
+        }
+        for (int d = 0; d < dims; ++d) {
+            if (quad & (1 << d)) {
+                mbr[quad][d][0][0] = 0.5;
+                mbr[quad][d][1][0] = 1.0;
+            } else {
+                mbr[quad][d][0][0] = 0.0;
+                mbr[quad][d][1][0] = 0.5;
+            }
+        }
+    }
+
+    // Calcola nds_mask
+    nds_mask = (double***)malloc(num_pts * sizeof(double**));
+    for (int p = 0; p < num_pts; ++p) {
+        nds_mask[p] = (double**)malloc(num_nds * sizeof(double*));
+        for (int n = 0; n < num_nds; ++n) {
+            nds_mask[p][n] = (double*)malloc(sizeof(double));
             bool match = true;
             for (int d = 0; d < dims; ++d) {
-                if (pts[p][d] != mbr[n][d][0] && pts[p][d] != mbr[n][d][1]) {
+                double val = pts_mask[p][d][0];
+                if (val != mbr[n][d][0][0] && val != mbr[n][d][1][0]) {
                     match = false;
                     break;
                 }
             }
-            if (match) {
-                nds_mask[p][n] = 1;
-            }
+            nds_mask[p][n][0] = match ? 1.0 : 0.0;
         }
     }
 
-    return {pts_mask, nds_mask};
+    // Dealloca mbr
+    for (int quad = 0; quad < num_nds; ++quad) {
+        for (int d = 0; d < dims; ++d) {
+            free(mbr[quad][d][0]);
+            free(mbr[quad][d][1]);
+            free(mbr[quad][d]);
+        }
+        free(mbr[quad]);
+    }
+    free(mbr);
+    free(incr);
 }
