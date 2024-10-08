@@ -150,7 +150,7 @@ void QNode::clearHalfspaces() {
 
 void QNode::splitNode() {
     if (!norm) {
-        // Non suddividere se il nodo è invalido
+        // Do not split if the node is invalid
         return;
     }
 
@@ -158,28 +158,30 @@ void QNode::splitNode() {
     double*** subDivs = genSubdivisions(numSubs);
 
     children = (QNode**)malloc(numSubs * sizeof(QNode*));
-    // Inizializza tutti i figli a nullptr
+    // Initialize all children to nullptr
     for (int i = 0; i < numSubs; ++i) {
         children[i] = nullptr;
     }
 
     for (int i = 0; i < numSubs; ++i) {
-        // Crea un nuovo nodo figlio
+        // Create a new child node
         QNode* child = new QNode(this, subDivs[i], dims);
 
-        // Verifica se il nodo figlio è valido
+        // Check if the child node is valid
         if (child->checkNodeValidity()) {
-            child->norm = true; // Imposta il nodo come valido
+            child->norm = true; // Set the node as valid
             children[i] = child;
+            subDivs[i] = nullptr; // The child now owns the mbr
         } else {
-            // Il nodo è invalido, eliminato
+            // The node is invalid, delete it
             child->norm = false;
             delete child;
             children[i] = nullptr;
+            subDivs[i] = nullptr; // The child has freed the mbr
         }
     }
 
-    // Dealloca le suddivisioni
+    // Deallocate the subdivisions
     for (int i = 0; i < numSubs; ++i) {
         if (subDivs[i]) {
             for (int j = 0; j < dims; ++j) {
@@ -192,8 +194,9 @@ void QNode::splitNode() {
     }
     free(subDivs);
 
-    leaf = false; // Questo nodo non è più una foglia
+    leaf = false; // This node is no longer a leaf
 }
+
 
 double*** QNode::genSubdivisions(int& numSubs) {
     numSubs = 1 << dims; // 2^dims combinazioni
