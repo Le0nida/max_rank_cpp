@@ -149,10 +149,10 @@ void QNode::clearHalfspaces() {
 }
 
 HalfSpace** QNode::getTotalCovered(int& totalCovered) const {
-    totalCovered = 0;
+    totalCovered = numCovered;  // Inizia con i covered del nodo corrente
     QNode* ref = parent;
 
-    // Calcola il totale dei covered
+    // Aggiungi i covered degli antenati
     while (ref != nullptr) {
         totalCovered += ref->numCovered;
         ref = ref->parent;
@@ -163,13 +163,19 @@ HalfSpace** QNode::getTotalCovered(int& totalCovered) const {
         return nullptr;
     }
 
-    // Rialloca memoria per contenere tutti i covered
+    // Rialloca memoria per contenere tutti i covered (incluso this)
     auto** totalCoveredArray = (HalfSpace**)malloc(totalCovered * sizeof(HalfSpace*));
 
-    ref = parent;
     int currentIndex = 0;
 
-    // Copia tutti gli HalfSpace coperti dagli antenati
+    // Copia i covered del nodo corrente (this)
+    if (numCovered > 0) {
+        memcpy(totalCoveredArray, covered, numCovered * sizeof(HalfSpace*));
+        currentIndex += numCovered;
+    }
+
+    // Copia i covered degli antenati
+    ref = parent;
     while (ref != nullptr) {
         for (int i = 0; i < ref->numCovered; i++) {
             totalCoveredArray[currentIndex++] = ref->covered[i];
@@ -179,6 +185,7 @@ HalfSpace** QNode::getTotalCovered(int& totalCovered) const {
 
     return totalCoveredArray;
 }
+
 
 void QNode::splitNode() {
     if (!norm) {
