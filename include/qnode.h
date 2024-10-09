@@ -5,6 +5,8 @@
 #ifndef QNODE_H
 #define QNODE_H
 
+#include <vector>
+
 #include "halfspace.h"
 
 extern int globalNodeID;
@@ -30,22 +32,20 @@ public:
     size_t order;               // Ordine del nodo
     HalfSpace** covered;        // Halfspace coperti (array di puntatori)
     int numCovered;             // Numero di halfspace coperti
-    HalfSpace** halfspaces;     // Halfspace nel nodo (array di puntatori)
-    int numHalfspaces;          // Numero di halfspace nel nodo
+    std::vector<long int> halfspaces;          // ID degli halfpsaces nel nodo
     QNode** children;           // Puntatore ai figli
     int dims;                   // Numero di dimensioni del nodo
 
     // Funzioni membro
-    inline bool isRoot() const { return parent == nullptr; }
-    inline bool isLeaf() const { return leaf; }
+    [[nodiscard]] inline bool isRoot() const { return parent == nullptr; }
+    [[nodiscard]] inline bool isLeaf() const { return leaf; }
     void setOrder();
-    void insertHalfspaces(HalfSpace** hspaces, int numHSpaces);
     PositionHS MbrVersusHalfSpace(const double* hs_coeff, double hs_known);
-    void clearHalfspaces();
     void splitNode();
-    double*** genSubdivisions(int& numSubs);
+    double*** genSubdivisions();
     bool checkNodeValidity();
     HalfSpace** getTotalCovered(int& totalCovered) const;
+    void appendHalfspace(long int hsID);
 };
 
 #endif // QNODE_H

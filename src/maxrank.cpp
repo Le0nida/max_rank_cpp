@@ -14,8 +14,10 @@
 #include <iostream>
 #include <limits>
 #include <cstring> // Per memcpy
+#include <map>
 
 int numOfSubdivisions = 0;
+std::map<long int, HalfSpace*> HalfSpacesMap;
 
 void freeCell(Cell* cell) {
     if (cell->mask) {
@@ -23,9 +25,6 @@ void freeCell(Cell* cell) {
     }
     if (cell->covered) {
         free(cell->covered);
-    }
-    if (cell->halfspaces) {
-        free(cell->halfspaces);
     }
     if (cell->leaf_mbr) {
         for (int i = 0; i < cell->dims; ++i) {
@@ -46,7 +45,7 @@ Cell* deepCopyCell(const Cell* original) {
     // Copy primitive fields
     copy->order = original->order;
     copy->numCovered = original->numCovered;
-    copy->numHalfspaces = original->numHalfspaces;
+    copy->halfspaces = original->halfspaces;
     copy->dims = original->dims;
 
     // Copy mask
@@ -63,14 +62,6 @@ Cell* deepCopyCell(const Cell* original) {
         memcpy(copy->covered, original->covered, original->numCovered * sizeof(HalfSpace*));
     } else {
         copy->covered = nullptr;
-    }
-
-    // Copy halfspaces pointers
-    if (original->halfspaces && original->numHalfspaces > 0) {
-        copy->halfspaces = (HalfSpace**)malloc(original->numHalfspaces * sizeof(HalfSpace*));
-        memcpy(copy->halfspaces, original->halfspaces, original->numHalfspaces * sizeof(HalfSpace*));
-    } else {
-        copy->halfspaces = nullptr;
     }
 
     // Copy leaf_mbr
@@ -106,13 +97,11 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
     int numIncomp = 0;
     getincomparables(data, data_size, p, &incomp, numIncomp);
 
-    // Inizializza una lista per tenere traccia di tutti gli halfspace creati
-    HalfSpace** allHalfSpaces = nullptr;
-    int numAllHalfSpaces = 0;
-
     // Lista cumulativa di tutti i record già processati
     Point** all_old_records = nullptr;
     int numAllOldRecords = 0;
+
+    std::vector<long int> halfspacesToInsert;
 
     // Definisci la funzione updateqt
     auto updateqt = [&](Point** old_sky, int numOldSky, Point**& new_sky, int& numNewSky, QNode**& leaves, int& numLeaves) {
@@ -121,17 +110,12 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
 
         // Genera gli halfspaces senza duplicati
         int numNewHalfspaces = 0;
-        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, all_old_records, numNewSky, numAllOldRecords, numNewHalfspaces);
+        halfspacesToInsert.clear();
+        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, all_old_records, numNewSky, numAllOldRecords, numNewHalfspaces, halfspacesToInsert);
 
-        // Aggiungi gli halfspaces alla lista globale per la gestione della memoria
-        for (int i = 0; i < numNewHalfspaces; ++i) {
-            numAllHalfSpaces++;
-            allHalfSpaces = (HalfSpace**)realloc(allHalfSpaces, numAllHalfSpaces * sizeof(HalfSpace*));
-            allHalfSpaces[numAllHalfSpaces - 1] = new_halfspaces[i];
-        }
 
         if (numNewHalfspaces > 0) {
-            qt.inserthalfspaces(new_halfspaces, numNewHalfspaces);
+            qt.inserthalfspaces(halfspacesToInsert);
             std::cout << "> " << numNewHalfspaces << " halfspace(s) have been inserted" << std::endl;
         }
 
@@ -180,9 +164,9 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
             }
 
             int hamweight = 0;
-            while (hamweight <= leaf->numHalfspaces && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
+            while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
                 int numHamstrings = 0;
-                char** hamstrings = genhammingstrings(static_cast<int>(leaf->numHalfspaces), hamweight, numHamstrings);
+                char** hamstrings = genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight, numHamstrings);
 
                 int numCells = 0;
                 Cell** cells = searchmincells_lp(*leaf, hamstrings, numHamstrings, numCells);
@@ -292,12 +276,6 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
         }
 
         if (numToExpand == 0) {
-            // Dealloca tutti gli halfspace creati
-            for (int h = 0; h < numAllHalfSpaces; ++h) {
-                delete allHalfSpaces[h];
-            }
-            free(allHalfSpaces);
-
             // Ritorna il risultato
             return {static_cast<int>(numDominators) + minorder_singular + 1, mincells_singular};
         }

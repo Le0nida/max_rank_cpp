@@ -37,7 +37,7 @@ class Cell {
 public:
     // Costruttore
     Cell(int order, const char* mask, HalfSpace** covered, int numCovered,
-         HalfSpace** halfspaces, int numHalfspaces, double** leaf_mbr, int dims,
+         std::vector<long int> halfspaces, double** leaf_mbr, int dims,
          const Point& feasible_pnt);
 
     // Distruttore
@@ -50,8 +50,7 @@ public:
     char* mask;
     HalfSpace** covered;
     int numCovered;
-    HalfSpace** halfspaces;
-    int numHalfspaces;
+    std::vector<long int> halfspaces;
     double** leaf_mbr;
     int dims;
     Point feasible_pnt;

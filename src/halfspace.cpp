@@ -5,8 +5,11 @@
 #include "halfspace.h"
 #include <cstring> // Per memcpy
 #include <cmath>
+#include <map>
 #include <numeric> // Per inner_product
+#include <vector>
 
+extern std::map<long int, HalfSpace*> HalfSpacesMap;
 
 HalfLine::HalfLine(const Point& pnt) : pnt(pnt), dims(2), arr(Arrangement::AUGMENTED) {
     m = pnt.coord[0] - pnt.coord[1];
@@ -43,7 +46,7 @@ bool HalfSpace::operator==(const HalfSpace& other) const {
 }
 
 // Generate halfspaces from a point and a set of records
-HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, int numRecords, int numOldRecords, int& numHalfSpaces) {
+HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, int numRecords, int numOldRecords, int& numHalfSpaces, std::vector<long int>& halfspacesToInsert) {
     int dims = p.dims - 1;
     double p_d = p.coord[p.dims - 1];  // Last coordinate of p
     double* p_i = p.coord;  // Coordinates of p, excluding the last
@@ -57,16 +60,8 @@ HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, 
         Point* r = records[idx];
         bool found = false;
 
-        // Controlla se il punto è già presente in old_records
-        for (int pp = 0; pp < numOldRecords; ++pp) {
-            if (old_records[pp]->id == r->id) {
-                found = true;
-                break;
-            }
-        }
-
-        // Se il punto è stato trovato tra i vecchi record, lo salta
-        if (found) {
+        if (HalfSpacesMap.find(r->id) != HalfSpacesMap.end())
+        {
             continue;
         }
 
@@ -81,8 +76,10 @@ HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, 
 
         // Crea un nuovo halfspace con l'id del record corrente
         long int id = r->id;
-        auto* hs = new HalfSpace(id, coeff, p_d - r_d, dims);
 
+        halfspacesToInsert.push_back(id);
+        auto* hs = new HalfSpace(id, coeff, p_d - r_d, dims);
+        HalfSpacesMap.emplace(id, hs);
         // Dealloca il coeff poiché è stato copiato nella struttura HalfSpace
         free(coeff);
 

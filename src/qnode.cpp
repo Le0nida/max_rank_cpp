@@ -7,15 +7,17 @@
 #include <iostream>
 #include <cstring> // Per memcpy
 #include <cstdlib> // Per malloc e free
+#include <map>
 
 // Variabili esterne
 int normalizedMax = 1;
 int maxCapacity = 10; // Capacità massima del nodo
 int globalNodeID = 0;
+extern std::map<long int, HalfSpace*> HalfSpacesMap;;
 
 QNode::QNode(QNode* parent, double** mbr, int dims)
     : parent(parent), mbr(mbr), norm(true), leaf(true), order(0),
-      covered(nullptr), numCovered(0), halfspaces(nullptr), numHalfspaces(0),
+      covered(nullptr), numCovered(0), halfspaces({}),
       children(nullptr), dims(dims)
 {
     nodeID = globalNodeID++;
@@ -26,12 +28,6 @@ QNode::~QNode() {
     if (covered) {
         free(covered);
         covered = nullptr;
-    }
-
-    // Dealloca gli halfspace del nodo
-    if (halfspaces) {
-        free(halfspaces);
-        halfspaces = nullptr;
     }
 
     // Dealloca i nodi figli ricorsivamente
@@ -93,59 +89,43 @@ PositionHS QNode::MbrVersusHalfSpace(const double* hs_coeff, double hs_known) {
     }
 }
 
-void QNode::insertHalfspaces(HalfSpace** hspaces, int numHSpaces) {
-    for (int i = 0; i < numHSpaces; ++i) {
-        HalfSpace* hs = hspaces[i];
-        const double* hs_coeff = hs->coeff;
-        double hs_known = hs->known;
+void QNode::appendHalfspace(long int hsID)
+{
+    PositionHS pos = MbrVersusHalfSpace(HalfSpacesMap[hsID]->coeff, HalfSpacesMap[hsID]->known);
+    // Determina la posizione dell'halfspace rispetto al MBR del nodo
+    if (pos == BELOW) {
+        // L'halfspace è completamente sotto il MBR, memorizzalo nei covered
+        numCovered++;
+        covered = (HalfSpace**)realloc(covered, numCovered * sizeof(HalfSpace*));
+        covered[numCovered - 1] = HalfSpacesMap[hsID];
+    } else if (pos == OVERLAPPED) {
+        if (isLeaf()) {
+            //current node n is a leaf, so we need to insert hs to n's intersectedHS set and then check the capacity of the set
+            halfspaces.push_back(hsID);
 
-        // Determina la posizione dell'halfspace rispetto al MBR del nodo
-        PositionHS pos = MbrVersusHalfSpace(hs_coeff, hs_known);
+            //after insertion, max capacity of the set intersectedHalfspace exceeded, we need to split current node
+            if (halfspaces.size() > maxCapacity) {
+                // Suddividi il nodo
+                splitNode();
 
-        if (pos == BELOW) {
-            // L'halfspace è completamente sotto il MBR, memorizzalo nei covered
-            numCovered++;
-            covered = (HalfSpace**)realloc(covered, numCovered * sizeof(HalfSpace*));
-            covered[numCovered - 1] = hs;
-        } else if (pos == OVERLAPPED) {
-            if (isLeaf()) {
-                // Il nodo è una foglia, memorizza negli halfspaces
-                numHalfspaces++;
-                halfspaces = (HalfSpace**)realloc(halfspaces, numHalfspaces * sizeof(HalfSpace*));
-                halfspaces[numHalfspaces - 1] = hs;
-
-                // Verifica se è necessario suddividere il nodo
-                if (numHalfspaces > maxCapacity) {
-                    // Suddividi il nodo
-                    splitNode();
-
-                    // Redistribuisci gli halfspaces tra i figli
-                    for (int k = 0; k < numOfSubdivisions; k++) {
-                        if (children[k] != nullptr) {
-                            children[k]->insertHalfspaces(halfspaces, numHalfspaces);
-                        }
-                    }
-                    // Svuota gli halfspaces da questo nodo
-                    clearHalfspaces();
-                }
-            } else {
-                // Il nodo non è una foglia, passa l'halfspace ai figli
-                for (int k = 0; k < numOfSubdivisions; k++) {
-                    if (children[k] != nullptr) {
-                        children[k]->insertHalfspaces(&hs, 1);
+                // Redistribuisci gli halfspaces tra i figli
+                for (auto oldHsID: halfspaces)
+                {
+                    for (int j = 0; j < numOfSubdivisions; j++) {                     //to each of the 2^d children of root
+                        if (this->children[j]->norm)
+                            this->children[j]->appendHalfspace(oldHsID);
                     }
                 }
+                halfspaces.clear();
+            }
+        } else {
+            // Il nodo non è una foglia, passa l'halfspace ai figli
+            for (int j = 0; j < numOfSubdivisions; j++) {                     //to each of the 2^d children of root
+                if (this->children[j]->norm)
+                    this->children[j]->appendHalfspace(hsID);
             }
         }
     }
-}
-
-void QNode::clearHalfspaces() {
-    if (halfspaces) {
-        free(halfspaces);
-        halfspaces = nullptr;
-    }
-    numHalfspaces = 0;
 }
 
 HalfSpace** QNode::getTotalCovered(int& totalCovered) const {
@@ -193,35 +173,32 @@ void QNode::splitNode() {
         return;
     }
 
-    int numSubs;
-    double*** subDivs = genSubdivisions(numSubs);
+    double*** subDivs = genSubdivisions();
 
-    children = (QNode**)malloc(numSubs * sizeof(QNode*));
+    children = (QNode**)malloc(numOfSubdivisions * sizeof(QNode*));
     // Initialize all children to nullptr
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         children[i] = nullptr;
     }
 
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         // Create a new child node
         QNode* child = new QNode(this, subDivs[i], dims);
 
         // Check if the child node is valid
         if (child->checkNodeValidity()) {
             child->norm = true; // Set the node as valid
-            children[i] = child;
-            subDivs[i] = nullptr; // The child now owns the mbr
+
         } else {
             // The node is invalid, delete it
             child->norm = false;
-            delete child;
-            children[i] = nullptr;
-            subDivs[i] = nullptr; // The child has freed the mbr
         }
+        children[i] = child;
+        subDivs[i] = nullptr; // The child now owns the mbr
     }
 
     // Deallocate the subdivisions
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         if (subDivs[i]) {
             for (int j = 0; j < dims; ++j) {
                 if (subDivs[i][j]) {
@@ -236,16 +213,20 @@ void QNode::splitNode() {
     leaf = false; // This node is no longer a leaf
 }
 
+#define MAXDIM = 10
 
-double*** QNode::genSubdivisions(int& numSubs) {
-    numSubs = 1 << dims; // 2^dims combinazioni
-    double*** subdivisions = (double***)malloc(numSubs * sizeof(double**));
+double*** QNode::genSubdivisions() {
+    std::vector<double> mids(dims);
+    for (int j = 0; j < dims; ++j) {
+        mids[j] = (mbr[j][0] + mbr[j][1]) * 0.5;
+    }
+    double*** subdivisions = (double***)malloc(numOfSubdivisions * sizeof(double**));
 
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         double** child_mbr = (double**)malloc(dims * sizeof(double*));
         for (int j = 0; j < dims; ++j) {
             child_mbr[j] = (double*)malloc(2 * sizeof(double));
-            double mid = (mbr[j][0] + mbr[j][1]) * 0.5; // Punto medio dell'MBR nella dimensione j
+            double mid = mids[j]; // Punto medio dell'MBR nella dimensione j
 
             if (i & (1 << j)) {
                 // Usa la metà superiore nella dimensione j

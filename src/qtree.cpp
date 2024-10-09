@@ -31,11 +31,18 @@ void QTree::createroot() {
     root->splitNode();
 }
 
-void QTree::inserthalfspaces(HalfSpace** halfspaces, int numHalfspaces) {
-    if (numHalfspaces == 0) return;
+// IN input passso la lista di id da inserire
+void QTree::inserthalfspaces(const std::vector<long int>& halfspacesToInsert) {
+    if (halfspacesToInsert.empty()) return;
 
-    // Start with the root node
-    root->insertHalfspaces(halfspaces, numHalfspaces);
+    for (auto hsID: halfspacesToInsert)
+    {
+        // Start with the root node
+        for (int j = 0; j < numOfSubdivisions; j++) {                     //to each of the 2^d children of root
+            if (root->children[j]->norm)
+                root->children[j]->appendHalfspace(hsID);
+        }
+    }
 }
 
 QNode** QTree::getleaves(int& numLeaves) {

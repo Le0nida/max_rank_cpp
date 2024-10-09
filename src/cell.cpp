@@ -9,6 +9,8 @@
 #include <src/Highs.h>
 #include <limits>
 
+extern std::map<long int, HalfSpace*> HalfSpacesMap;;
+
 // Constructor for Interval class remains unchanged
 Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
     : halfline(halfline), range(range), coversleft(coversleft)
@@ -23,9 +25,9 @@ bool Interval::issingular() const
 
 // Implementazione del costruttore della classe Cell
 Cell::Cell(int order, const char* mask, HalfSpace** covered, int numCovered,
-           HalfSpace** halfspaces, int numHalfspaces, double** leaf_mbr, int dims,
+           std::vector<long int> halfspaces, double** leaf_mbr, int dims,
            const Point& feasible_pnt)
-    : order(order), numCovered(numCovered), numHalfspaces(numHalfspaces), dims(dims), feasible_pnt(feasible_pnt)
+    : order(order), numCovered(numCovered), dims(dims), feasible_pnt(feasible_pnt)
 {
     // Copia della maschera
     int mask_len = strlen(mask);
@@ -35,10 +37,6 @@ Cell::Cell(int order, const char* mask, HalfSpace** covered, int numCovered,
     // Copia degli halfspaces coperti
     this->covered = (HalfSpace**)malloc(numCovered * sizeof(HalfSpace*));
     memcpy(this->covered, covered, numCovered * sizeof(HalfSpace*));
-
-    // Copia degli halfspaces del nodo
-    this->halfspaces = (HalfSpace**)malloc(numHalfspaces * sizeof(HalfSpace*));
-    memcpy(this->halfspaces, halfspaces, numHalfspaces * sizeof(HalfSpace*));
 
     // Copia del leaf_mbr
     this->leaf_mbr = (double**)malloc(dims * sizeof(double*));
@@ -64,10 +62,6 @@ Cell::~Cell() {
     if (covered) {
         free(covered);
         covered = nullptr;
-    }
-    if (halfspaces) {
-        free(halfspaces);
-        halfspaces = nullptr;
     }
     if (leaf_mbr) {
         for (int i = 0; i < dims; ++i) {
@@ -369,8 +363,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
     HalfSpace** leaf_covered = leaf.getTotalCovered(totalCovered);
     int numLeafCovered = totalCovered;
 
-    HalfSpace** halfspaces = leaf.halfspaces;
-    int numHalfspaces = leaf.numHalfspaces;
+    int numHalfspaces = leaf.halfspaces.size();
 
     if (numHalfspaces == 0) {
         // Caso in cui non ci sono halfspaces nel nodo foglia
@@ -384,7 +377,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
 
         numCells = 1;
         cells = (Cell**)malloc(sizeof(Cell*));
-        cells[0] = new Cell(0, "", leaf_covered, numLeafCovered, nullptr, 0, leaf.mbr, dims, feasible_pnt);
+        cells[0] = new Cell(0, "", leaf_covered, numLeafCovered, {}, leaf.mbr, dims, feasible_pnt);
         return cells;
     }
 
@@ -428,7 +421,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
         b_ub[numHalfspaces] = 1.0;
 
         for (int b = 0; b < numHalfspaces; ++b) {
-            HalfSpace* hs = halfspaces[b];
+            HalfSpace* hs = HalfSpacesMap[leaf.halfspaces[b]];
             if (hamstr[b] == '0') {
                 for (int i = 0; i < dims; ++i) {
                     A_ub[b * num_vars + i] = -hs->coeff[i];
@@ -458,7 +451,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
             free(feasible_coords);
 
             // Crea un nuovo Cell e aggiungilo alla lista
-            Cell* cell = new Cell(0, hamstr, leaf_covered, numLeafCovered, halfspaces, numHalfspaces, leaf.mbr, dims, feasible_pnt);
+            Cell* cell = new Cell(0, hamstr, leaf_covered, numLeafCovered, leaf.halfspaces, leaf.mbr, dims, feasible_pnt);
             numCells++;
             cells = (Cell**)realloc(cells, numCells * sizeof(Cell*));
             cells[numCells - 1] = cell;
