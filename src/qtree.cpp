@@ -4,6 +4,8 @@
 
 #include "qtree.h"
 #include <cstdlib> // For malloc, free
+#include <string.h>
+#include <vector>
 
 extern int numOfSubdivisions;
 
@@ -37,35 +39,33 @@ void QTree::inserthalfspaces(HalfSpace** halfspaces, int numHalfspaces) {
 }
 
 QNode** QTree::getleaves(int& numLeaves) {
-    QNode** leaves = nullptr;
-    numLeaves = 0;
-    QNode** to_search = (QNode**)malloc(sizeof(QNode*));
-    int numToSearch = 1;
-    to_search[0] = root;
+    std::vector<QNode*> to_search;
+    std::vector<QNode*> leaves;
 
-    while (numToSearch > 0) {
-        QNode* current = to_search[numToSearch - 1];
-        numToSearch--;
+    to_search.push_back(root);
+
+    while (!to_search.empty()) {
+        QNode* current = to_search.back();
+        to_search.pop_back();
 
         if (current->norm) {
             if (current->isLeaf()) {
-                numLeaves++;
-                leaves = (QNode**)realloc(leaves, numLeaves * sizeof(QNode*));
-                leaves[numLeaves - 1] = current;
+                leaves.push_back(current);
             } else {
                 for (int i = 0; i < numOfSubdivisions; i++) {
                     QNode* child = current->children[i];
-                    // Verify that the child pointer is not null
                     if (child) {
-                        numToSearch++;
-                        to_search = (QNode**)realloc(to_search, numToSearch * sizeof(QNode*));
-                        to_search[numToSearch - 1] = child;
+                        to_search.push_back(child);
                     }
                 }
             }
         }
     }
-    free(to_search);
 
-    return leaves;
+    // Copy leaves from std::vector to a dynamically allocated array
+    numLeaves = static_cast<int>(leaves.size());
+    QNode** result = (QNode**)malloc(numLeaves * sizeof(QNode*));
+    memcpy(result, leaves.data(), numLeaves * sizeof(QNode*));
+
+    return result;
 }
