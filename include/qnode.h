@@ -45,7 +45,7 @@ public:
     void splitNode();
     double*** genSubdivisions(int& numSubs);
     bool checkNodeValidity();
-    void setCovered();
+    HalfSpace** getTotalCovered(int& totalCovered) const;
 };
 
 #endif // QNODE_H

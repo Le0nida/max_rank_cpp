@@ -359,8 +359,9 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
     Cell** cells = nullptr;
 
     int dims = leaf.dims;
-    HalfSpace** leaf_covered = leaf.covered;
-    int numLeafCovered = leaf.numCovered;
+    int totalCovered;
+    HalfSpace** leaf_covered = leaf.getTotalCovered(totalCovered);
+    int numLeafCovered = totalCovered;
 
     HalfSpace** halfspaces = leaf.halfspaces;
     int numHalfspaces = leaf.numHalfspaces;

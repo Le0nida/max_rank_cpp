@@ -148,31 +148,36 @@ void QNode::clearHalfspaces() {
     numHalfspaces = 0;
 }
 
-void QNode::setCovered() {
+HalfSpace** QNode::getTotalCovered(int& totalCovered) const {
+    totalCovered = 0;
     QNode* ref = parent;
 
+    // Calcola il totale dei covered
     while (ref != nullptr) {
-        int oldCovered = numCovered;
-        numCovered += ref->numCovered;
-
-        if (numCovered > 0) {
-            // Rialloca in modo sicuro
-            auto** newCovered = (HalfSpace**)realloc(covered, numCovered * sizeof(HalfSpace*));
-            if (newCovered == nullptr) {
-                // Gestione dell'errore in caso di fallimento di realloc
-                std::cerr << "Error: Memory reallocation failed!" << std::endl;
-                return;
-            }
-            covered = newCovered;
-
-            // Correzione dell'indice del ciclo for
-            for (int i = oldCovered; i < numCovered; i++) {
-                covered[i] = ref->covered[i - oldCovered];  // Usa oldCovered come offset
-            }
-        }
-
+        totalCovered += ref->numCovered;
         ref = ref->parent;
     }
+
+    // Se non ci sono covered, restituisci nullptr
+    if (totalCovered == 0) {
+        return nullptr;
+    }
+
+    // Rialloca memoria per contenere tutti i covered
+    auto** totalCoveredArray = (HalfSpace**)malloc(totalCovered * sizeof(HalfSpace*));
+
+    ref = parent;
+    int currentIndex = 0;
+
+    // Copia tutti gli HalfSpace coperti dagli antenati
+    while (ref != nullptr) {
+        for (int i = 0; i < ref->numCovered; i++) {
+            totalCoveredArray[currentIndex++] = ref->covered[i];
+        }
+        ref = ref->parent;
+    }
+
+    return totalCoveredArray;
 }
 
 void QNode::splitNode() {

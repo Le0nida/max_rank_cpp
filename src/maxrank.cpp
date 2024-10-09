@@ -35,14 +35,18 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
     HalfSpace** allHalfSpaces = nullptr;
     int numAllHalfSpaces = 0;
 
+    // Lista cumulativa di tutti i record già processati
+    Point** all_old_records = nullptr;
+    int numAllOldRecords = 0;
+
     // Definisci la funzione updateqt
     auto updateqt = [&](Point** old_sky, int numOldSky, Point**& new_sky, int& numNewSky, QNode**& leaves, int& numLeaves) {
         // Ottieni il nuovo skyline
         getskyline(incomp, numIncomp, &new_sky, numNewSky);
 
-        // Genera gli halfspaces
+        // Genera gli halfspaces senza duplicati
         int numNewHalfspaces = 0;
-        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, numNewSky, numNewHalfspaces);
+        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, all_old_records, numNewSky, numAllOldRecords, numNewHalfspaces);
 
         // Aggiungi gli halfspaces alla lista globale per la gestione della memoria
         for (int i = 0; i < numNewHalfspaces; ++i) {
@@ -58,12 +62,16 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
 
         free(new_halfspaces); // Libera l'array di puntatori
 
+        // Aggiungi i nuovi punti a `all_old_records`
+        numAllOldRecords += numNewSky;
+        all_old_records = (Point**)realloc(all_old_records, numAllOldRecords * sizeof(Point*));
+        memcpy(all_old_records + numAllOldRecords - numNewSky, new_sky, numNewSky * sizeof(Point*));
+
         // Ottieni le foglie
         leaves = qt.getleaves(numLeaves);
 
         for (int i = 0; i < numLeaves; ++i) {
             leaves[i]->setOrder();
-            leaves[i]->setCovered();
         }
 
         // Ordina le foglie in base all'ordine
