@@ -120,7 +120,7 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
                         // Libera le precedenti mincells
                         if (mincells) {
                             for (int c = 0; c < numMinCells; ++c) {
-                                delete mincells[c];
+                                free(mincells[c]);
                             }
                             free(mincells);
                         }
