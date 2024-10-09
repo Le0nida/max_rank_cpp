@@ -24,7 +24,7 @@ class Interval {
 public:
     Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft);
 
-    bool issingular() const;
+    [[nodiscard]] bool issingular() const;
 
     HalfLine halfline;
     std::pair<double, double> range;
@@ -36,20 +36,22 @@ public:
 class Cell {
 public:
     // Costruttore
-    Cell(int order, const char* mask, HalfSpace** covered, int numCovered,
-         std::vector<long int> halfspaces, double** leaf_mbr, int dims,
+    Cell(int order, const char* mask, const std::vector<long int>& covered,
+         const std::vector<long int>& halfspaces, double** leaf_mbr, int dims,
          const Point& feasible_pnt);
 
     // Distruttore
     ~Cell();
+
+    // Copy constructor
+    Cell(const Cell& other);
 
     // Funzione per verificare se il cell è singolare
     bool issingular() const;
 
     int order;
     char* mask;
-    HalfSpace** covered;
-    int numCovered;
+    std::vector<long int> covered;
     std::vector<long int> halfspaces;
     double** leaf_mbr;
     int dims;

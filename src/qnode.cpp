@@ -17,18 +17,13 @@ extern std::map<long int, HalfSpace*> HalfSpacesMap;;
 
 QNode::QNode(QNode* parent, double** mbr, int dims)
     : parent(parent), mbr(mbr), norm(true), leaf(true), order(0),
-      covered(nullptr), numCovered(0), halfspaces({}),
+      covered({}), halfspaces({}),
       children(nullptr), dims(dims)
 {
     nodeID = globalNodeID++;
 }
 
 QNode::~QNode() {
-    // Dealloca gli halfspace coperti
-    if (covered) {
-        free(covered);
-        covered = nullptr;
-    }
 
     // Dealloca i nodi figli ricorsivamente
     if (children) {
@@ -52,11 +47,11 @@ QNode::~QNode() {
 }
 
 void QNode::setOrder() {
-    size_t localOrder = numCovered;
+    size_t localOrder = covered.size();
     QNode* ref = parent;
 
     while (ref != nullptr) {
-        localOrder += ref->numCovered;
+        localOrder += ref->covered.size();
         ref = ref->parent;
     }
 
@@ -67,19 +62,22 @@ PositionHS QNode::MbrVersusHalfSpace(const double* hs_coeff, double hs_known) {
     double minVal = 0.0;
     double maxVal = 0.0;
 
-    // Calcola i valori minimo e massimo dell'halfspace sul MBR
+    // Primo ciclo: gestisci coefficienti positivi
     for (int i = 0; i < dims; ++i) {
-        double coeff = hs_coeff[i];
-        if (coeff >= 0) {
-            minVal += coeff * mbr[i][0]; // Usa il valore minimo del MBR per coefficienti positivi
-            maxVal += coeff * mbr[i][1]; // Usa il valore massimo del MBR per coefficienti positivi
-        } else {
-            minVal += coeff * mbr[i][1]; // Usa il valore massimo del MBR per coefficienti negativi
-            maxVal += coeff * mbr[i][0]; // Usa il valore minimo del MBR per coefficienti negativi
+        if (hs_coeff[i] >= 0) {
+            minVal += hs_coeff[i] * mbr[i][0];
+            maxVal += hs_coeff[i] * mbr[i][1];
         }
     }
 
-    // Confronta i valori min e max con hs_known per determinare la posizione
+    // Secondo ciclo: gestisci coefficienti negativi
+    for (int i = 0; i < dims; ++i) {
+        if (hs_coeff[i] < 0) {
+            minVal += hs_coeff[i] * mbr[i][1];
+            maxVal += hs_coeff[i] * mbr[i][0];
+        }
+    }
+
     if (maxVal < hs_known) {
         return BELOW;
     } else if (minVal > hs_known) {
@@ -91,13 +89,12 @@ PositionHS QNode::MbrVersusHalfSpace(const double* hs_coeff, double hs_known) {
 
 void QNode::appendHalfspace(long int hsID)
 {
-    PositionHS pos = MbrVersusHalfSpace(HalfSpacesMap[hsID]->coeff, HalfSpacesMap[hsID]->known);
+    auto* hs = HalfSpacesMap[hsID];
+    PositionHS pos = MbrVersusHalfSpace(hs->coeff, hs->known);
     // Determina la posizione dell'halfspace rispetto al MBR del nodo
     if (pos == BELOW) {
         // L'halfspace è completamente sotto il MBR, memorizzalo nei covered
-        numCovered++;
-        covered = (HalfSpace**)realloc(covered, numCovered * sizeof(HalfSpace*));
-        covered[numCovered - 1] = HalfSpacesMap[hsID];
+        covered.push_back(hsID);
     } else if (pos == OVERLAPPED) {
         if (isLeaf()) {
             //current node n is a leaf, so we need to insert hs to n's intersectedHS set and then check the capacity of the set
@@ -128,44 +125,37 @@ void QNode::appendHalfspace(long int hsID)
     }
 }
 
-HalfSpace** QNode::getTotalCovered(int& totalCovered) const {
-    totalCovered = numCovered;  // Inizia con i covered del nodo corrente
+std::vector<long int> QNode::getTotalCovered(int& totalCovered) const {
+    totalCovered = covered.size();  // Inizia con i covered del nodo corrente
     QNode* ref = parent;
 
     // Aggiungi i covered degli antenati
     while (ref != nullptr) {
-        totalCovered += ref->numCovered;
+        totalCovered += ref->covered.size();
         ref = ref->parent;
     }
 
-    // Se non ci sono covered, restituisci nullptr
+    // Se non ci sono covered, restituisci un vettore vuoto
     if (totalCovered == 0) {
-        return nullptr;
+        return {};
     }
 
-    // Rialloca memoria per contenere tutti i covered (incluso this)
-    auto** totalCoveredArray = (HalfSpace**)malloc(totalCovered * sizeof(HalfSpace*));
-
-    int currentIndex = 0;
-
-    // Copia i covered del nodo corrente (this)
-    if (numCovered > 0) {
-        memcpy(totalCoveredArray, covered, numCovered * sizeof(HalfSpace*));
-        currentIndex += numCovered;
-    }
+    // Crea un vettore per contenere tutti i covered (incluso this)
+    std::vector<long int> totalCoveredArray;
+    totalCoveredArray.reserve(totalCovered);  // Prealloca memoria per evitare riallocazioni
 
     // Copia i covered degli antenati
     ref = parent;
     while (ref != nullptr) {
-        for (int i = 0; i < ref->numCovered; i++) {
-            totalCoveredArray[currentIndex++] = ref->covered[i];
-        }
+        totalCoveredArray.insert(totalCoveredArray.end(), ref->covered.begin(), ref->covered.end());
         ref = ref->parent;
     }
 
+    // Copia i covered del nodo corrente (this)
+    totalCoveredArray.insert(totalCoveredArray.end(), covered.begin(), covered.end());
+
     return totalCoveredArray;
 }
-
 
 void QNode::splitNode() {
     if (!norm) {

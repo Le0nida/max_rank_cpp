@@ -23,9 +23,6 @@ void freeCell(Cell* cell) {
     if (cell->mask) {
         free(cell->mask);
     }
-    if (cell->covered) {
-        free(cell->covered);
-    }
     if (cell->leaf_mbr) {
         for (int i = 0; i < cell->dims; ++i) {
             free(cell->leaf_mbr[i]);
@@ -39,48 +36,9 @@ void freeCell(Cell* cell) {
 }
 
 Cell* deepCopyCell(const Cell* original) {
-    // Allocate a new Cell
-    Cell* copy = (Cell*)malloc(sizeof(Cell));
-
-    // Copy primitive fields
-    copy->order = original->order;
-    copy->numCovered = original->numCovered;
-    copy->halfspaces = original->halfspaces;
-    copy->dims = original->dims;
-
-    // Copy mask
-    if (original->mask) {
-        copy->mask = (char*)malloc((strlen(original->mask) + 1) * sizeof(char));
-        strcpy(copy->mask, original->mask);
-    } else {
-        copy->mask = nullptr;
-    }
-
-    // Copy covered pointers
-    if (original->covered && original->numCovered > 0) {
-        copy->covered = (HalfSpace**)malloc(original->numCovered * sizeof(HalfSpace*));
-        memcpy(copy->covered, original->covered, original->numCovered * sizeof(HalfSpace*));
-    } else {
-        copy->covered = nullptr;
-    }
-
-    // Copy leaf_mbr
-    if (original->leaf_mbr && original->dims > 0) {
-        copy->leaf_mbr = (double**)malloc(original->dims * sizeof(double*));
-        for (int i = 0; i < original->dims; ++i) {
-            copy->leaf_mbr[i] = (double*)malloc(2 * sizeof(double));
-            memcpy(copy->leaf_mbr[i], original->leaf_mbr[i], 2 * sizeof(double));
-        }
-    } else {
-        copy->leaf_mbr = nullptr;
-    }
-
-    // Copy feasible_pnt using the copy constructor
-    new (&copy->feasible_pnt) Point(original->feasible_pnt);
-
-    return copy;
+    // Use the copy constructor to create a deep copy
+    return new Cell(*original);
 }
-
 
 
 std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& numMinCellsToReturn) {
@@ -251,8 +209,8 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
                 new_singulars++;
             } else {
                 //std::cout << "\n" << c << "(" << cell->numCovered << ")" << std::endl;
-                for (int i = 0; i < cell->numCovered; ++i) {
-                    HalfSpace* hs = cell->covered[i];
+                for (auto && i : cell->covered) {
+                    HalfSpace* hs = HalfSpacesMap[i];
                     //std::cout << hs->pntID << ",";
                     if (hs->arr == AUGMENTED) {
                         bool found = false;

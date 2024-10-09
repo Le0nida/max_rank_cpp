@@ -30,8 +30,7 @@ public:
     bool norm;                  // Flag di normalizzazione
     bool leaf;                  // Flag di foglia
     size_t order;               // Ordine del nodo
-    HalfSpace** covered;        // Halfspace coperti (array di puntatori)
-    int numCovered;             // Numero di halfspace coperti
+    std::vector<long int> covered;
     std::vector<long int> halfspaces;          // ID degli halfpsaces nel nodo
     QNode** children;           // Puntatore ai figli
     int dims;                   // Numero di dimensioni del nodo
@@ -44,7 +43,7 @@ public:
     void splitNode();
     double*** genSubdivisions();
     bool checkNodeValidity();
-    HalfSpace** getTotalCovered(int& totalCovered) const;
+    std::vector<long int> getTotalCovered(int& totalCovered) const;
     void appendHalfspace(long int hsID);
 };
 
