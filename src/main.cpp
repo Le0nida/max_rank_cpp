@@ -184,22 +184,28 @@ int main(int argc, char* argv[]) {
             // Assuming mincells[0] is valid
             if (numMinCells > 0) {
                 int dims = mincells[0]->feasible_pnt.dims;
-                cellEntrySize = dims + 2; // id + coordinates + 1 - sum of coordinates
+                cellEntrySize = dims + 2; // id + coordinates + 1 (per 1 - sumCoords)
 
                 numCellsRes++;
                 cells = (double**)realloc(cells, numCellsRes * sizeof(double*));
                 cells[numCellsRes - 1] = (double*)malloc(cellEntrySize * sizeof(double));
 
-                cells[numCellsRes - 1][0] = (double)q;
-                for (int d = 0; d < dims; ++d) {
-                    cells[numCellsRes - 1][d + 1] = mincells[0]->feasible_pnt.coord[d];
-                }
+                cells[numCellsRes - 1][0] = (double)q;  // Inserisci l'ID (query)
+
+                // Copia le coordinate e somma
                 double sumCoords = 0.0;
                 for (int d = 0; d < dims; ++d) {
-                    sumCoords += mincells[0]->feasible_pnt.coord[d];
+                    double coord = mincells[0]->feasible_pnt.coord[d];
+                    cells[numCellsRes - 1][d + 1] = coord;
+                    sumCoords += coord;
                 }
+
+
+
+                // Calcola 1.0 - sumCoords e memorizza l'ultimo valore
                 cells[numCellsRes - 1][dims + 1] = 1.0 - sumCoords;
             }
+
 
             // Clean up mincells
             if (mincells)
@@ -222,7 +228,7 @@ int main(int argc, char* argv[]) {
     writeCSV(R"(C:\Users\leona\Desktop\maxrank.csv)", res, numRes, 2, resHeaders, 2);
 
     const std::string cellHeaders[] = {"id", "query_found"};
-    writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, numCellsRes, cellEntrySize, cellHeaders, cellEntrySize);
+    writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, numCellsRes, cellEntrySize, cellHeaders, 2);
 
     // Clean up
     for (int i = 0; i < numData; ++i) {

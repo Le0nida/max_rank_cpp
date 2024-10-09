@@ -19,6 +19,25 @@ Point::~Point() {
     }
 }
 
+Point::Point(const Point& other) : id(other.id), dims(other.dims) {
+    coord = (double*)malloc(dims * sizeof(double));
+    memcpy(coord, other.coord, dims * sizeof(double));
+}
+
+// Assignment operator
+Point& Point::operator=(const Point& other) {
+    if (this == &other) return *this;
+
+    if (coord) free(coord);
+
+    dims = other.dims;
+    id = other.id;
+    coord = (double*)malloc(dims * sizeof(double));
+    memcpy(coord, other.coord, dims * sizeof(double));
+
+    return *this;
+}
+
 bool Point::operator==(const Point& other) const {
     if (dims != other.dims) {
         return false;

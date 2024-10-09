@@ -47,6 +47,12 @@ Cell::Cell(int order, const char* mask, HalfSpace** covered, int numCovered,
         this->leaf_mbr[i][0] = leaf_mbr[i][0];
         this->leaf_mbr[i][1] = leaf_mbr[i][1];
     }
+
+    // Copia profonda del Point (feasible_pnt)
+    auto* coord_copy = (double*)malloc(dims * sizeof(double));
+    memcpy(coord_copy, feasible_pnt.coord, dims * sizeof(double));
+    this->feasible_pnt = Point(coord_copy, dims, feasible_pnt.id); // Crea un nuovo Point con una copia
+    free(coord_copy); // Libera la memoria temporanea
 }
 
 // Implementazione del distruttore della classe Cell
@@ -453,7 +459,6 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
 
             // Crea un nuovo Cell e aggiungilo alla lista
             Cell* cell = new Cell(0, hamstr, leaf_covered, numLeafCovered, halfspaces, numHalfspaces, leaf.mbr, dims, feasible_pnt);
-
             numCells++;
             cells = (Cell**)realloc(cells, numCells * sizeof(Cell*));
             cells[numCells - 1] = cell;

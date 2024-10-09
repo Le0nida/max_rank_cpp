@@ -14,6 +14,9 @@ public:
     // Distruttore
     ~Point();
 
+    Point(const Point& other);
+    Point& operator=(const Point& other);
+
     // Proprietà pubbliche
     int id;
     double* coord;

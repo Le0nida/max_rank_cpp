@@ -17,6 +17,81 @@
 
 int numOfSubdivisions = 0;
 
+void freeCell(Cell* cell) {
+    if (cell->mask) {
+        free(cell->mask);
+    }
+    if (cell->covered) {
+        free(cell->covered);
+    }
+    if (cell->halfspaces) {
+        free(cell->halfspaces);
+    }
+    if (cell->leaf_mbr) {
+        for (int i = 0; i < cell->dims; ++i) {
+            free(cell->leaf_mbr[i]);
+        }
+        free(cell->leaf_mbr);
+    }
+    // Explicitly call the destructor of feasible_pnt
+    cell->feasible_pnt.~Point();
+
+    free(cell);
+}
+
+Cell* deepCopyCell(const Cell* original) {
+    // Allocate a new Cell
+    Cell* copy = (Cell*)malloc(sizeof(Cell));
+
+    // Copy primitive fields
+    copy->order = original->order;
+    copy->numCovered = original->numCovered;
+    copy->numHalfspaces = original->numHalfspaces;
+    copy->dims = original->dims;
+
+    // Copy mask
+    if (original->mask) {
+        copy->mask = (char*)malloc((strlen(original->mask) + 1) * sizeof(char));
+        strcpy(copy->mask, original->mask);
+    } else {
+        copy->mask = nullptr;
+    }
+
+    // Copy covered pointers
+    if (original->covered && original->numCovered > 0) {
+        copy->covered = (HalfSpace**)malloc(original->numCovered * sizeof(HalfSpace*));
+        memcpy(copy->covered, original->covered, original->numCovered * sizeof(HalfSpace*));
+    } else {
+        copy->covered = nullptr;
+    }
+
+    // Copy halfspaces pointers
+    if (original->halfspaces && original->numHalfspaces > 0) {
+        copy->halfspaces = (HalfSpace**)malloc(original->numHalfspaces * sizeof(HalfSpace*));
+        memcpy(copy->halfspaces, original->halfspaces, original->numHalfspaces * sizeof(HalfSpace*));
+    } else {
+        copy->halfspaces = nullptr;
+    }
+
+    // Copy leaf_mbr
+    if (original->leaf_mbr && original->dims > 0) {
+        copy->leaf_mbr = (double**)malloc(original->dims * sizeof(double*));
+        for (int i = 0; i < original->dims; ++i) {
+            copy->leaf_mbr[i] = (double*)malloc(2 * sizeof(double));
+            memcpy(copy->leaf_mbr[i], original->leaf_mbr[i], 2 * sizeof(double));
+        }
+    } else {
+        copy->leaf_mbr = nullptr;
+    }
+
+    // Copy feasible_pnt using the copy constructor
+    new (&copy->feasible_pnt) Point(original->feasible_pnt);
+
+    return copy;
+}
+
+
+
 std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& numMinCellsToReturn) {
     numOfSubdivisions = (int)pow(2.0, p.dims - 1);
     QTree qt(p.dims - 1, 10);
@@ -128,20 +203,45 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
                         // Libera le precedenti mincells
                         if (mincells) {
                             for (int c = 0; c < numMinCells; ++c) {
-                                free(mincells[c]);
+                                freeCell(mincells[c]);
                             }
                             free(mincells);
                         }
-                        mincells = cells;
+
+                        // Alloca nuove celle e copia una per una
+                        mincells = (Cell**)malloc(numCells * sizeof(Cell*));
+                        for (int c = 0; c < numCells; ++c) {
+                            mincells[c] = deepCopyCell(cells[c]);  // Copia profonda
+                        }
                         numMinCells = numCells;
+
                     } else {
                         // Aggiungi cells a mincells
                         int totalCells = numMinCells + numCells;
-                        mincells = (Cell**)realloc(mincells, totalCells * sizeof(Cell*));
-                        memcpy(mincells + numMinCells, cells, numCells * sizeof(Cell*));
+                        Cell** newMincells = (Cell**)malloc(totalCells * sizeof(Cell*));
+
+                        // Copia le celle già presenti in mincells
+                        for (int i = 0; i < numMinCells; ++i) {
+                            newMincells[i] = deepCopyCell(mincells[i]);  // Copia profonda
+                            freeCell(mincells[i]);  // Libera le vecchie celle
+                        }
+                        free(mincells);
+
+                        // Copia le nuove celle da cells
+                        for (int i = 0; i < numCells; ++i) {
+                            newMincells[numMinCells + i] = deepCopyCell(cells[i]);  // Copia profonda
+                        }
+
+                        mincells = newMincells;
                         numMinCells = totalCells;
+
+                        // Libera cells se non ti serve più
+                        for (int c = 0; c < numCells; ++c) {
+                            freeCell(cells[c]);  // Libera correttamente
+                        }
                         free(cells);
                     }
+
                     break;
                 }
                 hamweight++;
@@ -159,6 +259,11 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
                 numMinCellsToReturn++;
                 mincells_singular = (Cell**)realloc(mincells_singular, numMinCellsToReturn * sizeof(Cell*));
                 mincells_singular[numMinCellsToReturn - 1] = cell;
+                /*std::cout << "\n\nMINCELL[" << numMinCellsToReturn - 1 << "]" << std::endl;  // DEBUG
+                for (int d = 0; d < mincells_singular[numMinCellsToReturn - 1]->feasible_pnt.dims; ++d) {
+                    double coord = mincells_singular[numMinCellsToReturn - 1]->feasible_pnt.coord[d];
+                    std::cout << "Coordinate[" << d << "]: " << coord << std::endl;  // DEBUG
+                }*/
                 new_singulars++;
             } else {
                 //std::cout << "\n" << c << "(" << cell->numCovered << ")" << std::endl;
