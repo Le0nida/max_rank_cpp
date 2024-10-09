@@ -148,6 +148,33 @@ void QNode::clearHalfspaces() {
     numHalfspaces = 0;
 }
 
+void QNode::setCovered() {
+    QNode* ref = parent;
+
+    while (ref != nullptr) {
+        int oldCovered = numCovered;
+        numCovered += ref->numCovered;
+
+        if (numCovered > 0) {
+            // Rialloca in modo sicuro
+            auto** newCovered = (HalfSpace**)realloc(covered, numCovered * sizeof(HalfSpace*));
+            if (newCovered == nullptr) {
+                // Gestione dell'errore in caso di fallimento di realloc
+                std::cerr << "Error: Memory reallocation failed!" << std::endl;
+                return;
+            }
+            covered = newCovered;
+
+            // Correzione dell'indice del ciclo for
+            for (int i = oldCovered; i < numCovered; i++) {
+                covered[i] = ref->covered[i - oldCovered];  // Usa oldCovered come offset
+            }
+        }
+
+        ref = ref->parent;
+    }
+}
+
 void QNode::splitNode() {
     if (!norm) {
         // Do not split if the node is invalid

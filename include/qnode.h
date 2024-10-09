@@ -45,6 +45,7 @@ public:
     void splitNode();
     double*** genSubdivisions(int& numSubs);
     bool checkNodeValidity();
+    void setCovered();
 };
 
 #endif // QNODE_H

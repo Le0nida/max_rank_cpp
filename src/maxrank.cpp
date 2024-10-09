@@ -63,6 +63,7 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
 
         for (int i = 0; i < numLeaves; ++i) {
             leaves[i]->setOrder();
+            leaves[i]->setCovered();
         }
 
         // Ordina le foglie in base all'ordine
@@ -153,8 +154,10 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
                 mincells_singular[numMinCellsSingular - 1] = cell;
                 new_singulars++;
             } else {
+                //std::cout << "\n" << c << "(" << cell->numCovered << ")" << std::endl;
                 for (int i = 0; i < cell->numCovered; ++i) {
                     HalfSpace* hs = cell->covered[i];
+                    //std::cout << hs->pntID << ",";
                     if (hs->arr == AUGMENTED) {
                         bool found = false;
                         for (int j = 0; j < numToExpand; ++j) {
