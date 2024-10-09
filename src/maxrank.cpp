@@ -17,7 +17,7 @@
 
 int numOfSubdivisions = 0;
 
-std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
+std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& numMinCellsToReturn) {
     numOfSubdivisions = (int)pow(2.0, p.dims - 1);
     QTree qt(p.dims - 1, 10);
 
@@ -89,7 +89,6 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
 
     int minorder_singular = std::numeric_limits<int>::max();
     Cell** mincells_singular = nullptr;
-    int numMinCellsSingular = 0;
     int n_exp = 0;
 
     while (true) {
@@ -157,9 +156,9 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p) {
             Cell* cell = mincells[c];
             if (cell->issingular()) {
                 minorder_singular = cell->order;
-                numMinCellsSingular++;
-                mincells_singular = (Cell**)realloc(mincells_singular, numMinCellsSingular * sizeof(Cell*));
-                mincells_singular[numMinCellsSingular - 1] = cell;
+                numMinCellsToReturn++;
+                mincells_singular = (Cell**)realloc(mincells_singular, numMinCellsToReturn * sizeof(Cell*));
+                mincells_singular[numMinCellsToReturn - 1] = cell;
                 new_singulars++;
             } else {
                 //std::cout << "\n" << c << "(" << cell->numCovered << ")" << std::endl;

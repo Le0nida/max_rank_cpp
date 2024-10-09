@@ -168,7 +168,7 @@ int main(int argc, char* argv[]) {
             if (method == "BA") {
                 // tie(maxrank, mincells) = ba_hd(data, numData, *data[idx]);
             } else {
-                std::pair<int, Cell**> result = aa_hd(data, numData, *data[idx]);
+                std::pair<int, Cell**> result = aa_hd(data, numData, *data[idx], numMinCells);
                 maxrank = result.first;
                 mincells = result.second;
                 // Assume numMinCells is set appropriately within aa_hd
@@ -202,10 +202,16 @@ int main(int argc, char* argv[]) {
             }
 
             // Clean up mincells
-            for (int c = 0; c < numMinCells; ++c) {
-                delete mincells[c];
+            if (mincells)
+            {
+                for (int c = 0; c < numMinCells; ++c) {
+                    if (mincells[c])
+                    {
+                        free(mincells[c]);
+                    }
+                }
+                free(mincells);
             }
-            free(mincells);
         }
     } else {
         // Handle 2D case if needed
@@ -213,10 +219,10 @@ int main(int argc, char* argv[]) {
 
     // Write results to CSV
     const std::string resHeaders[] = {"id", "maxrank"};
-    writeCSV("C:\\Users\\leona\\Desktop\\maxrank.csv", res, numRes, 2, resHeaders, 2);
+    writeCSV(R"(C:\Users\leona\Desktop\maxrank.csv)", res, numRes, 2, resHeaders, 2);
 
     const std::string cellHeaders[] = {"id", "query_found"};
-    writeCSV("C:\\Users\\leona\\Desktop\\cells.csv", cells, numCellsRes, cellEntrySize, cellHeaders, cellEntrySize);
+    writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, numCellsRes, cellEntrySize, cellHeaders, cellEntrySize);
 
     // Clean up
     for (int i = 0; i < numData; ++i) {
