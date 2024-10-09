@@ -7,6 +7,7 @@
 #include <iostream>
 #include <cstring> // Per memcpy
 #include <cstdlib> // Per malloc e free
+#include <vector>
 
 // Variabili esterne
 int normalizedMax = 1;
@@ -193,16 +194,15 @@ void QNode::splitNode() {
         return;
     }
 
-    int numSubs;
-    double*** subDivs = genSubdivisions(numSubs);
+    double*** subDivs = genSubdivisions();
 
-    children = (QNode**)malloc(numSubs * sizeof(QNode*));
+    children = (QNode**)malloc(numOfSubdivisions * sizeof(QNode*));
     // Initialize all children to nullptr
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         children[i] = nullptr;
     }
 
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         // Create a new child node
         QNode* child = new QNode(this, subDivs[i], dims);
 
@@ -221,7 +221,7 @@ void QNode::splitNode() {
     }
 
     // Deallocate the subdivisions
-    for (int i = 0; i < numSubs; ++i) {
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         if (subDivs[i]) {
             for (int j = 0; j < dims; ++j) {
                 if (subDivs[i][j]) {
@@ -237,15 +237,17 @@ void QNode::splitNode() {
 }
 
 
-double*** QNode::genSubdivisions(int& numSubs) {
-    numSubs = 1 << dims; // 2^dims combinazioni
-    double*** subdivisions = (double***)malloc(numSubs * sizeof(double**));
-
-    for (int i = 0; i < numSubs; ++i) {
+double*** QNode::genSubdivisions() {
+    double*** subdivisions = (double***)malloc(numOfSubdivisions * sizeof(double**));
+    std::vector<double> mids(dims);
+    for (int j = 0; j < dims; ++j) {
+        mids[j] = (mbr[j][0] + mbr[j][1]) * 0.5; // Punto medio
+    }
+    for (int i = 0; i < numOfSubdivisions; ++i) {
         double** child_mbr = (double**)malloc(dims * sizeof(double*));
         for (int j = 0; j < dims; ++j) {
             child_mbr[j] = (double*)malloc(2 * sizeof(double));
-            double mid = (mbr[j][0] + mbr[j][1]) * 0.5; // Punto medio dell'MBR nella dimensione j
+            double mid = mids[j];
 
             if (i & (1 << j)) {
                 // Usa la metà superiore nella dimensione j

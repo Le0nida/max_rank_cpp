@@ -43,7 +43,7 @@ public:
     PositionHS MbrVersusHalfSpace(const double* hs_coeff, double hs_known);
     void clearHalfspaces();
     void splitNode();
-    double*** genSubdivisions(int& numSubs);
+    double*** genSubdivisions();
     bool checkNodeValidity();
     HalfSpace** getTotalCovered(int& totalCovered) const;
 };
