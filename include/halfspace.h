@@ -56,7 +56,7 @@ public:
 };
 
 // Generate halfspaces from a point and a set of records
-HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, int numRecords, int numOldRecords, int& numHalfSpaces, std::vector<long int>& halfspacesToInsert);
+HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, int numRecords, int numOldRecords, int& numHalfSpaces, std::vector<HalfSpace *>& halfspacesToInsert);
 
 // Other function declarations
 Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfspace);

@@ -15,9 +15,10 @@
 #include <limits>
 #include <cstring> // Per memcpy
 #include <map>
+#include <unordered_set>
 
 int numOfSubdivisions = 0;
-std::map<long int, HalfSpace*> HalfSpacesMap;
+std::unordered_set<long int> HalfSpaces;
 
 void freeCell(Cell* cell) {
     if (cell->mask) {
@@ -59,7 +60,7 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
     Point** all_old_records = nullptr;
     int numAllOldRecords = 0;
 
-    std::vector<long int> halfspacesToInsert;
+    std::vector<HalfSpace *> halfspacesToInsert;
 
     // Definisci la funzione updateqt
     auto updateqt = [&](Point** old_sky, int numOldSky, Point**& new_sky, int& numNewSky, QNode**& leaves, int& numLeaves) {
@@ -209,8 +210,7 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
                 new_singulars++;
             } else {
                 //std::cout << "\n" << c << "(" << cell->numCovered << ")" << std::endl;
-                for (auto && i : cell->covered) {
-                    HalfSpace* hs = HalfSpacesMap[i];
+                for (auto && hs : cell->covered) {
                     //std::cout << hs->pntID << ",";
                     if (hs->arr == AUGMENTED) {
                         bool found = false;

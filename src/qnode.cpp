@@ -13,7 +13,6 @@
 int normalizedMax = 1;
 int maxCapacity = 10; // Capacità massima del nodo
 int globalNodeID = 0;
-extern std::map<long int, HalfSpace*> HalfSpacesMap;;
 
 QNode::QNode(QNode* parent, double** mbr, int dims)
     : parent(parent), mbr(mbr), norm(true), leaf(true), order(0),
@@ -87,18 +86,17 @@ PositionHS QNode::MbrVersusHalfSpace(const double* hs_coeff, double hs_known) {
     }
 }
 
-void QNode::appendHalfspace(long int hsID)
+void QNode::appendHalfspace(HalfSpace * hs)
 {
-    auto* hs = HalfSpacesMap[hsID];
     PositionHS pos = MbrVersusHalfSpace(hs->coeff, hs->known);
     // Determina la posizione dell'halfspace rispetto al MBR del nodo
     if (pos == BELOW) {
         // L'halfspace è completamente sotto il MBR, memorizzalo nei covered
-        covered.push_back(hsID);
+        covered.push_back(hs);
     } else if (pos == OVERLAPPED) {
         if (isLeaf()) {
             //current node n is a leaf, so we need to insert hs to n's intersectedHS set and then check the capacity of the set
-            halfspaces.push_back(hsID);
+            halfspaces.push_back(hs);
 
             //after insertion, max capacity of the set intersectedHalfspace exceeded, we need to split current node
             if (halfspaces.size() > maxCapacity) {
@@ -106,11 +104,11 @@ void QNode::appendHalfspace(long int hsID)
                 splitNode();
 
                 // Redistribuisci gli halfspaces tra i figli
-                for (auto oldHsID: halfspaces)
+                for (auto oldHs: halfspaces)
                 {
                     for (int j = 0; j < numOfSubdivisions; j++) {                     //to each of the 2^d children of root
                         if (this->children[j]->norm)
-                            this->children[j]->appendHalfspace(oldHsID);
+                            this->children[j]->appendHalfspace(oldHs);
                     }
                 }
                 halfspaces.clear();
@@ -119,13 +117,13 @@ void QNode::appendHalfspace(long int hsID)
             // Il nodo non è una foglia, passa l'halfspace ai figli
             for (int j = 0; j < numOfSubdivisions; j++) {                     //to each of the 2^d children of root
                 if (this->children[j]->norm)
-                    this->children[j]->appendHalfspace(hsID);
+                    this->children[j]->appendHalfspace(hs);
             }
         }
     }
 }
 
-std::vector<long int> QNode::getTotalCovered(int& totalCovered) const {
+std::vector<HalfSpace *> QNode::getTotalCovered(int& totalCovered) const {
     totalCovered = covered.size();  // Inizia con i covered del nodo corrente
     QNode* ref = parent;
 
@@ -141,7 +139,7 @@ std::vector<long int> QNode::getTotalCovered(int& totalCovered) const {
     }
 
     // Crea un vettore per contenere tutti i covered (incluso this)
-    std::vector<long int> totalCoveredArray;
+    std::vector<HalfSpace *> totalCoveredArray;
     totalCoveredArray.reserve(totalCovered);  // Prealloca memoria per evitare riallocazioni
 
     // Copia i covered degli antenati

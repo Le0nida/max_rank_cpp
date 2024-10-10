@@ -32,7 +32,7 @@ void QTree::createroot() {
 }
 
 // IN input passso la lista di id da inserire
-void QTree::inserthalfspaces(const std::vector<long int>& halfspacesToInsert) {
+void QTree::inserthalfspaces(const std::vector<HalfSpace *>& halfspacesToInsert) {
     if (halfspacesToInsert.empty()) return;
 
     for (auto hsID: halfspacesToInsert)

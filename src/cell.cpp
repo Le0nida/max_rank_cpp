@@ -10,8 +10,6 @@
 #include <limits>
 #include <utility>
 
-extern std::map<long int, HalfSpace*> HalfSpacesMap;;
-
 // Constructor for Interval class remains unchanged
 Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
     : halfline(halfline), range(range), coversleft(coversleft)
@@ -25,8 +23,8 @@ bool Interval::issingular() const
 }
 
 // Implementazione del costruttore della classe Cell
-Cell::Cell(int order, const char* mask, const std::vector<long int>& covered,
-           const std::vector<long int>& halfspaces, double** leaf_mbr, int dims,
+Cell::Cell(int order, const char* mask, const std::vector<HalfSpace *>& covered,
+           const std::vector<HalfSpace *>& halfspaces, double** leaf_mbr, int dims,
            const Point& feasible_pnt)
     : order(order), dims(dims), feasible_pnt(feasible_pnt), covered(covered), halfspaces({})
 {
@@ -98,8 +96,7 @@ Cell::~Cell() {
 // Implementazione della funzione issingular
 bool Cell::issingular() const {
     for (auto c: covered) {
-    HalfSpace* h = HalfSpacesMap[c];
-        if (h->arr ==AUGMENTED) {
+        if (c->arr ==AUGMENTED) {
             return false;
         }
     }
@@ -385,7 +382,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
 
     int dims = leaf.dims;
     int totalCovered;
-    std::vector<long int> leaf_covered = leaf.getTotalCovered(totalCovered);
+    std::vector<HalfSpace *> leaf_covered = leaf.getTotalCovered(totalCovered);
     int numLeafCovered = totalCovered;
 
     size_t numHalfspaces = leaf.halfspaces.size();
@@ -446,7 +443,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
         b_ub[numHalfspaces] = 1.0;
 
         for (int b = 0; b < numHalfspaces; ++b) {
-            HalfSpace* hs = HalfSpacesMap[leaf.halfspaces[b]];
+            HalfSpace* hs = leaf.halfspaces[b];
             if (hamstr[b] == '0') {
                 for (int i = 0; i < dims; ++i) {
                     A_ub[b * num_vars + i] = -hs->coeff[i];
