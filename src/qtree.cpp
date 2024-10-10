@@ -34,8 +34,14 @@ void QTree::createroot() {
 void QTree::inserthalfspaces(HalfSpace** halfspaces, int numHalfspaces) {
     if (numHalfspaces == 0) return;
 
-    // Start with the root node
-    root->insertHalfspaces(halfspaces, numHalfspaces);
+    for (int i = 0; i < numHalfspaces; i++)
+    {
+        // Start with the root node
+        for (int j = 0; j < numOfSubdivisions; j++) {                     //to each of the 2^d children of root
+            if (root->children[j]->norm)
+                root->children[j]->insertHalfspaces(halfspaces[i]);
+        }
+    }
 }
 
 QNode** QTree::getleaves(int& numLeaves) {

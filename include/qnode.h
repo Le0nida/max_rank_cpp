@@ -39,7 +39,7 @@ public:
     inline bool isRoot() const { return parent == nullptr; }
     inline bool isLeaf() const { return leaf; }
     void setOrder();
-    void insertHalfspaces(HalfSpace** hspaces, int numHSpaces);
+    void insertHalfspaces(HalfSpace* hs);
     PositionHS MbrVersusHalfSpace(const double* hs_coeff, double hs_known);
     void clearHalfspaces();
     void splitNode();
