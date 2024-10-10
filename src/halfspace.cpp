@@ -47,14 +47,14 @@ bool HalfSpace::operator==(const HalfSpace& other) const {
 }
 
 // Generate halfspaces from a point and a set of records
-HalfSpace** genhalfspaces(const Point& p, Point** records, Point** old_records, int numRecords, int numOldRecords, int& numHalfSpaces, std::vector<HalfSpace *>& halfspacesToInsert) {
+HalfSpace** genhalfspaces(const Point& p, Point** records, int numRecords, int& numHalfSpaces, std::vector<HalfSpace *>& halfspacesToInsert) {
     int dims = p.dims - 1;
     double p_d = p.coord[p.dims - 1];  // Last coordinate of p
     double* p_i = p.coord;  // Coordinates of p, excluding the last
 
     // Inizializza la capacità iniziale per l'array halfspaces
     int capacity = numRecords;
-    HalfSpace** halfspaces = (HalfSpace**)malloc(capacity * sizeof(HalfSpace*));
+    auto** halfspaces = (HalfSpace**)malloc(capacity * sizeof(HalfSpace*));
     numHalfSpaces = 0; // Counter per i halfspaces effettivamente generati
 
     for (int idx = 0; idx < numRecords; ++idx) {

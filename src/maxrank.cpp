@@ -56,9 +56,6 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
     int numIncomp = 0;
     getincomparables(data, data_size, p, &incomp, numIncomp);
 
-    // Lista cumulativa di tutti i record già processati
-    Point** all_old_records = nullptr;
-    int numAllOldRecords = 0;
 
     std::vector<HalfSpace *> halfspacesToInsert;
 
@@ -70,7 +67,7 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
         // Genera gli halfspaces senza duplicati
         int numNewHalfspaces = 0;
         halfspacesToInsert.clear();
-        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, all_old_records, numNewSky, numAllOldRecords, numNewHalfspaces, halfspacesToInsert);
+        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, numNewSky, numNewHalfspaces, halfspacesToInsert);
 
 
         if (numNewHalfspaces > 0) {
@@ -79,11 +76,6 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
         }
 
         free(new_halfspaces); // Libera l'array di puntatori
-
-        // Aggiungi i nuovi punti a `all_old_records`
-        numAllOldRecords += numNewSky;
-        all_old_records = (Point**)realloc(all_old_records, numAllOldRecords * sizeof(Point*));
-        memcpy(all_old_records + numAllOldRecords - numNewSky, new_sky, numNewSky * sizeof(Point*));
 
         // Ottieni le foglie
         leaves = qt.getleaves(numLeaves);
