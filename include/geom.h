@@ -5,22 +5,18 @@
 #ifndef GEOM_H
 #define GEOM_H
 
-#include <cstdlib> // Per malloc e free
+#include <vector>
 
 class Point {
 public:
-    // Costruttore
-    Point(double* coord, int dims, int id = -1);
-    // Distruttore
-    ~Point();
-
-    Point(const Point& other);
-    Point& operator=(const Point& other);
-
-    // Proprietà pubbliche
     int id;
-    double* coord;
-    int dims;
+    std::vector<double> coord;
+    size_t dims;
+
+
+    explicit Point(const std::vector<double>& coord, const int id = -1)
+        : id(id), coord(coord), dims(coord.size()) {}
+
 
     // Operatore di uguaglianza per confrontare due punti
     bool operator==(const Point& other) const;

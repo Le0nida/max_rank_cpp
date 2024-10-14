@@ -7,7 +7,7 @@
 
 #include <utility>
 #include <vector>
-
+#include <string>
 #include "geom.h"
 #include "halfspace.h"
 #include "qnode.h"
@@ -35,25 +35,19 @@ public:
 // Classe Cell ottimizzata
 class Cell {
 public:
-    // Costruttore
-    Cell(int order, const char* mask, const std::vector<HalfSpace *>& covered,
-         const std::vector<HalfSpace *>& halfspaces, double** leaf_mbr, int dims,
-         const Point& feasible_pnt);
+    Cell(int order, const std::string& mask, const std::vector<std::shared_ptr<HalfSpace>>& covered,
+        const std::vector<std::shared_ptr<HalfSpace>>& halfspaces, const std::vector<std::pair<double, double>>& leaf_mbr,
+        int dims, const Point& feasible_pnt);
 
-    // Distruttore
-    ~Cell();
+    ~Cell() = default; // Lasciamo che i vector gestiscano la memoria
 
-    // Copy constructor
-    Cell(const Cell& other);
-
-    // Funzione per verificare se il cell è singolare
-    bool issingular() const;
+    [[nodiscard]] bool issingular() const;
 
     int order;
-    char* mask;
-    std::vector<HalfSpace *> covered;
-    std::vector<HalfSpace *> halfspaces;
-    double** leaf_mbr;
+    std::string mask;
+    std::vector<std::shared_ptr<HalfSpace>> covered;
+    std::vector<std::shared_ptr<HalfSpace>> halfspaces;
+    std::vector<std::pair<double, double>> leaf_mbr;
     int dims;
     Point feasible_pnt;
 };
@@ -66,6 +60,6 @@ void free_linprog_result(LinprogResult* result);
 
 // Funzioni per generare stringhe di Hamming e cercare minimi cell
 char** genhammingstrings(int strlen, int weight, int& numStrings);
-Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings, int& numCells);
+std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings);
 
 #endif // CELL_H

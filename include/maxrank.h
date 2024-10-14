@@ -9,6 +9,6 @@
 #include "cell.h"
 
 // Definisci la funzione aa_hd
-std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& numMinCellsToReturn);
+std::pair<int, std::vector<std::shared_ptr<Cell>>> aa_hd(const std::vector<std::shared_ptr<Point>>& data, const Point& p);
 
 #endif // MAXRANK_H

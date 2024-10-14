@@ -3,9 +3,7 @@
 //
 
 #include "maxrank.h"
-
 #include <algorithm>
-
 #include "query.h"
 #include "halfspace.h"
 #include "cell.h"
@@ -13,102 +11,63 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
-#include <cstring> // Per memcpy
 #include <map>
 #include <unordered_set>
 
 int numOfSubdivisions = 0;
 std::unordered_set<long int> HalfSpaces;
 
-void freeCell(Cell* cell) {
-    if (cell->mask) {
-        free(cell->mask);
-    }
-    if (cell->leaf_mbr) {
-        for (int i = 0; i < cell->dims; ++i) {
-            free(cell->leaf_mbr[i]);
-        }
-        free(cell->leaf_mbr);
-    }
-    // Explicitly call the destructor of feasible_pnt
-    cell->feasible_pnt.~Point();
-
-    free(cell);
-}
-
-Cell* deepCopyCell(const Cell* original) {
-    // Use the copy constructor to create a deep copy
-    return new Cell(*original);
-}
-
-
-std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& numMinCellsToReturn) {
-    numOfSubdivisions = (int)pow(2.0, p.dims - 1);
+std::pair<int, std::vector<std::shared_ptr<Cell>>> aa_hd(const std::vector<std::shared_ptr<Point>>& data, const Point& p) {
+    numOfSubdivisions = static_cast<int>(std::pow(2.0, p.dims - 1));
     QTree qt(p.dims - 1, 10);
 
     // Ottieni i dominatori
-    Point** dominators = nullptr;
-    int numDominators = 0;
-    getdominators(data, data_size, p, &dominators, numDominators);
+    std::vector<std::shared_ptr<Point>> dominators;
+    getdominators(data, p, dominators);
 
     // Ottieni gli incomparabili
-    Point** incomp = nullptr;
-    int numIncomp = 0;
-    getincomparables(data, data_size, p, &incomp, numIncomp);
+    std::vector<std::shared_ptr<Point>> incomp;
+    getincomparables(data, p, incomp);
 
+    std::vector<std::shared_ptr<HalfSpace>> halfspacesToInsert;
 
-    std::vector<HalfSpace *> halfspacesToInsert;
+    // Funzione lambda per aggiornare il QTree
+    auto updateqt = [&](std::vector<std::shared_ptr<Point>>& new_sky, std::vector<QNode*>& leaves) {
+        getskyline(incomp, new_sky);
 
-    // Definisci la funzione updateqt
-    auto updateqt = [&](Point** old_sky, int numOldSky, Point**& new_sky, int& numNewSky, QNode**& leaves, int& numLeaves) {
-        // Ottieni il nuovo skyline
-        getskyline(incomp, numIncomp, &new_sky, numNewSky);
-
-        // Genera gli halfspaces senza duplicati
-        int numNewHalfspaces = 0;
         halfspacesToInsert.clear();
-        HalfSpace** new_halfspaces = genhalfspaces(p, new_sky, numNewSky, numNewHalfspaces, halfspacesToInsert);
+        halfspacesToInsert = genhalfspaces(p, new_sky);
 
-
-        if (numNewHalfspaces > 0) {
+        if (!halfspacesToInsert.empty()) {
             qt.inserthalfspaces(halfspacesToInsert);
-            std::cout << "> " << numNewHalfspaces << " halfspace(s) have been inserted" << std::endl;
+            std::cout << "> " << halfspacesToInsert.size() << " halfspace(s) have been inserted" << std::endl;
         }
 
-        free(new_halfspaces); // Libera l'array di puntatori
+        leaves = qt.getleaves();
 
-        // Ottieni le foglie
-        leaves = qt.getleaves(numLeaves);
-
-        for (int i = 0; i < numLeaves; ++i) {
-            leaves[i]->setOrder();
+        for (const auto& leaf : leaves) {
+            leaf->setOrder();
         }
 
-        // Ordina le foglie in base all'ordine
-        std::sort(leaves, leaves + numLeaves, [](QNode* a, QNode* b) {
-        return a->order < b->order;  // Ordina in ordine crescente
-    });
+        std::sort(leaves.begin(), leaves.end(), [](const QNode* a, const QNode* b) {
+            return a->order < b->order;
+        });
     };
 
-    Point** sky = nullptr;
-    int numSky = 0;
-    QNode** leaves = nullptr;
-    int numLeaves = 0;
-
-    updateqt(nullptr, 0, sky, numSky, leaves, numLeaves);
+    std::vector<std::shared_ptr<Point>> sky;
+    std::vector<QNode*> leaves;
+    updateqt(sky, leaves);
 
     int minorder_singular = std::numeric_limits<int>::max();
-    Cell** mincells_singular = nullptr;
+    std::vector<std::shared_ptr<Cell>> mincells_singular;
     int n_exp = 0;
 
     while (true) {
         std::cout << "Cycle number " << n_exp << std::endl;
         int minorder = std::numeric_limits<int>::max();
-        Cell** mincells = nullptr;
-        int numMinCells = 0;
+        std::vector<std::shared_ptr<Cell>> mincells;
 
-        for (int i = 0; i < numLeaves; ++i) {
-            QNode* leaf = leaves[i];
+        for (auto& leaf : leaves) {
             int leaf_order = static_cast<int>(leaf->order);
             if (leaf_order > minorder || leaf_order > minorder_singular) {
                 break;
@@ -117,140 +76,70 @@ std::pair<int, Cell**> aa_hd(Point** data, int data_size, const Point& p, int& n
             int hamweight = 0;
             while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
                 int numHamstrings = 0;
-                char** hamstrings = genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight, numHamstrings);
+                std::unique_ptr<char*[]> hamstrings = std::unique_ptr<char*[]>(genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight, numHamstrings));
 
-                int numCells = 0;
-                Cell** cells = searchmincells_lp(*leaf, hamstrings, numHamstrings, numCells);
-
-                // Libera hamstrings
-                for (int h = 0; h < numHamstrings; ++h) {
-                    free(hamstrings[h]);
+                std::vector<std::shared_ptr<Cell>> cells = searchmincells_lp(*leaf, hamstrings.get(), numHamstrings);
+                for (auto c: cells)
+                {
+                    std::cout << "> Mincell " << ": Covered " << c.get()->covered.size() << std::endl;
                 }
-                free(hamstrings);
-
-                if (numCells > 0) {
-                    for (int c = 0; c < numCells; ++c) {
-                        cells[c]->order = leaf_order + hamweight;
+                if (!cells.empty()) {
+                    for (auto& cell : cells) {
+                        cell->order = leaf_order + hamweight;
                     }
 
                     if (minorder > leaf_order + hamweight) {
                         minorder = leaf_order + hamweight;
-                        // Libera le precedenti mincells
-                        if (mincells) {
-                            for (int c = 0; c < numMinCells; ++c) {
-                                freeCell(mincells[c]);
-                            }
-                            free(mincells);
-                        }
-
-                        // Alloca nuove celle e copia una per una
-                        mincells = (Cell**)malloc(numCells * sizeof(Cell*));
-                        for (int c = 0; c < numCells; ++c) {
-                            mincells[c] = deepCopyCell(cells[c]);  // Copia profonda
-                        }
-                        numMinCells = numCells;
-
+                        mincells = std::move(cells);
                     } else {
-                        // Aggiungi cells a mincells
-                        int totalCells = numMinCells + numCells;
-                        Cell** newMincells = (Cell**)malloc(totalCells * sizeof(Cell*));
-
-                        // Copia le celle già presenti in mincells
-                        for (int i = 0; i < numMinCells; ++i) {
-                            newMincells[i] = deepCopyCell(mincells[i]);  // Copia profonda
-                            freeCell(mincells[i]);  // Libera le vecchie celle
-                        }
-                        free(mincells);
-
-                        // Copia le nuove celle da cells
-                        for (int i = 0; i < numCells; ++i) {
-                            newMincells[numMinCells + i] = deepCopyCell(cells[i]);  // Copia profonda
-                        }
-
-                        mincells = newMincells;
-                        numMinCells = totalCells;
-
-                        // Libera cells se non ti serve più
-                        for (int c = 0; c < numCells; ++c) {
-                            freeCell(cells[c]);  // Libera correttamente
-                        }
-                        free(cells);
+                        mincells.insert(mincells.end(), cells.begin(), cells.end());
                     }
-
                     break;
                 }
                 hamweight++;
             }
         }
-        std::cout << "> Expansion " << n_exp << ": Found " << numMinCells << " mincell(s)" << std::endl;
+
+        std::cout << "> Expansion " << n_exp << ": Found " << mincells.size() << " mincell(s)" << std::endl;
 
         int new_singulars = 0;
-        HalfSpace** to_expand = nullptr;
-        int numToExpand = 0;
-        for (int c = 0; c < numMinCells; ++c) {
-            Cell* cell = mincells[c];
+        std::vector<std::shared_ptr<HalfSpace>> to_expand;
+        int i = 0;
+        for (auto& cell : mincells) {
+            std::cout << "> Mincell " << ++i << ": Covered " << cell->covered.size() << std::endl;
+
             if (cell->issingular()) {
                 minorder_singular = cell->order;
-                numMinCellsToReturn++;
-                mincells_singular = (Cell**)realloc(mincells_singular, numMinCellsToReturn * sizeof(Cell*));
-                mincells_singular[numMinCellsToReturn - 1] = cell;
-                /*std::cout << "\n\nMINCELL[" << numMinCellsToReturn - 1 << "]" << std::endl;  // DEBUG
-                for (int d = 0; d < mincells_singular[numMinCellsToReturn - 1]->feasible_pnt.dims; ++d) {
-                    double coord = mincells_singular[numMinCellsToReturn - 1]->feasible_pnt.coord[d];
-                    std::cout << "Coordinate[" << d << "]: " << coord << std::endl;  // DEBUG
-                }*/
+                mincells_singular.push_back(cell);
                 new_singulars++;
             } else {
-                //std::cout << "\n" << c << "(" << cell->numCovered << ")" << std::endl;
-                for (auto && hs : cell->covered) {
-                    //std::cout << hs->pntID << ",";
-                    if (hs->arr == AUGMENTED) {
-                        bool found = false;
-                        for (int j = 0; j < numToExpand; ++j) {
-                            if (to_expand[j] == hs) {
-                                found = true;
-                                break;
-                            }
-                        }
-                        if (!found) {
-                            numToExpand++;
-                            to_expand = (HalfSpace**)realloc(to_expand, numToExpand * sizeof(HalfSpace*));
-                            to_expand[numToExpand - 1] = hs;
-                        }
+                for (auto& hs : cell->covered) {
+                    if (hs->arr == AUGMENTED && std::find(to_expand.begin(), to_expand.end(), hs) == to_expand.end()) {
+                        to_expand.push_back(hs);
                     }
                 }
             }
         }
+
         if (new_singulars > 0) {
             std::cout << "> Expansion " << n_exp << ": Found " << new_singulars << " singular mincell(s) with a minorder of " << minorder_singular << std::endl;
         }
 
-        if (numToExpand == 0) {
-            // Ritorna il risultato
-            return {static_cast<int>(numDominators) + minorder_singular + 1, mincells_singular};
+        if (to_expand.empty()) {
+            return {static_cast<int>(dominators.size()) + minorder_singular + 1, std::move(mincells_singular)};
         }
 
         n_exp++;
-        std::cout << "> Expansion " << n_exp << ": " << numToExpand << " halfspace(s) will be expanded" << std::endl;
-        for (int h = 0; h < numToExpand; ++h) {
-            HalfSpace* hs = to_expand[h];
-            hs->arr = SINGULAR;
-            // Rimuovi hs->pntID da incomp
-            for (int i = 0; i < numIncomp; ++i) {
-                if (incomp[i]->id == hs->pntID) {
-                    // Rimuovi da incomp
-                    for (int j = i; j < numIncomp - 1; ++j) {
-                        incomp[j] = incomp[j + 1];
-                    }
-                    numIncomp--;
-                    incomp = (Point**)realloc(incomp, numIncomp * sizeof(Point*));
-                    break;
-                }
-            }
-        }
-        free(to_expand);
+        std::cout << "> Expansion " << n_exp << ": " << to_expand.size() << " halfspace(s) will be expanded" << std::endl;
 
-        // Aggiorna qt
-        updateqt(sky, numSky, sky, numSky, leaves, numLeaves);
+        for (const auto& hs : to_expand) {
+            hs->arr = SINGULAR;
+            auto it = std::remove_if(incomp.begin(), incomp.end(), [&](const std::shared_ptr<Point>& point) {
+                return point->id == hs->pntID;
+            });
+            incomp.erase(it, incomp.end());
+        }
+
+        updateqt(sky, leaves);
     }
 }

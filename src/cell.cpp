@@ -22,86 +22,16 @@ bool Interval::issingular() const
                        [](const HalfSpace& hl) { return hl.arr == Arrangement::SINGULAR; });
 }
 
-// Implementazione del costruttore della classe Cell
-Cell::Cell(int order, const char* mask, const std::vector<HalfSpace *>& covered,
-           const std::vector<HalfSpace *>& halfspaces, double** leaf_mbr, int dims,
-           const Point& feasible_pnt)
-    : order(order), dims(dims), feasible_pnt(feasible_pnt), covered(covered), halfspaces({})
-{
-    // Copia della maschera
-    int mask_len = strlen(mask);
-    this->mask = (char*)malloc((mask_len + 1) * sizeof(char));
-    strcpy(this->mask, mask);
+Cell::Cell(int order, const std::string& mask, const std::vector<std::shared_ptr<HalfSpace>>& covered,
+           const std::vector<std::shared_ptr<HalfSpace>>& halfspaces, const std::vector<std::pair<double, double>>& leaf_mbr,
+           int dims, const Point& feasible_pnt)
+    : order(order), mask(mask), covered(covered), halfspaces(halfspaces), leaf_mbr(leaf_mbr), dims(dims),
+      feasible_pnt(feasible_pnt) {}
 
-    // Copia del leaf_mbr
-    this->leaf_mbr = (double**)malloc(dims * sizeof(double*));
-    for (int i = 0; i < dims; ++i) {
-        this->leaf_mbr[i] = (double*)malloc(2 * sizeof(double));
-        this->leaf_mbr[i][0] = leaf_mbr[i][0];
-        this->leaf_mbr[i][1] = leaf_mbr[i][1];
-    }
-
-    // Copia profonda del Point (feasible_pnt)
-    auto* coord_copy = (double*)malloc(dims * sizeof(double));
-    memcpy(coord_copy, feasible_pnt.coord, dims * sizeof(double));
-    this->feasible_pnt = Point(coord_copy, dims, feasible_pnt.id); // Crea un nuovo Point con una copia
-    free(coord_copy); // Libera la memoria temporanea
-}
-
-Cell::Cell(const Cell& other)
-    : order(other.order),
-      dims(other.dims),
-      feasible_pnt(other.feasible_pnt) // Assumes Point has a proper copy constructor
-{
-    // Copy mask
-    if (other.mask) {
-        size_t mask_len = strlen(other.mask);
-        mask = (char*)malloc((mask_len + 1) * sizeof(char));
-        strcpy(mask, other.mask);
-    } else {
-        mask = nullptr;
-    }
-
-    // Copy covered and halfspaces vectors
-    covered = other.covered;
-    halfspaces = other.halfspaces;
-
-    // Copy leaf_mbr
-    if (other.leaf_mbr && dims > 0) {
-        leaf_mbr = (double**)malloc(dims * sizeof(double*));
-        for (int i = 0; i < dims; ++i) {
-            leaf_mbr[i] = (double*)malloc(2 * sizeof(double));
-            memcpy(leaf_mbr[i], other.leaf_mbr[i], 2 * sizeof(double));
-        }
-    } else {
-        leaf_mbr = nullptr;
-    }
-}
-
-// Implementazione del distruttore della classe Cell
-Cell::~Cell() {
-    if (mask) {
-        free(mask);
-        mask = nullptr;
-    }
-    if (leaf_mbr) {
-        for (int i = 0; i < dims; ++i) {
-            free(leaf_mbr[i]);
-        }
-        free(leaf_mbr);
-        leaf_mbr = nullptr;
-    }
-}
-
-// Implementazione della funzione issingular
 bool Cell::issingular() const {
-    for (auto c: covered) {
-        if (c->arr ==AUGMENTED) {
-            return false;
-        }
-    }
-
-    return true;
+    return std::all_of(covered.begin(), covered.end(), [](const std::shared_ptr<HalfSpace>& hs) {
+        return hs->arr == Arrangement::SINGULAR;
+    });
 }
 
 // Funzione per liberare il risultato della programmazione lineare
@@ -376,30 +306,22 @@ char** genhammingstrings(int strlen, int weight, int& numStrings) {
 }
 
 // Funzione per cercare i minimi cell tramite programmazione lineare
-Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings, int& numCells) {
-    numCells = 0;
-    Cell** cells = nullptr;
-
+std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings) {
     int dims = leaf.dims;
-    int totalCovered;
-    std::vector<HalfSpace *> leaf_covered = leaf.getTotalCovered(totalCovered);
-    int numLeafCovered = totalCovered;
+    std::vector<std::shared_ptr<Cell>> cells;
+
+    auto leaf_covered = leaf.getTotalCovered();
+    std::cout << "> Mincell " << ": TotalCovered " << leaf_covered.size() << std::endl;
 
     size_t numHalfspaces = leaf.halfspaces.size();
-
     if (numHalfspaces == 0) {
-        // Caso in cui non ci sono halfspaces nel nodo foglia
-        double** mbr = leaf.mbr;
-        auto* feasible_coords = (double*)malloc(dims * sizeof(double));
+        std::vector<std::pair<double, double>> mbr = leaf.mbr;
+        std::vector<double> feasible_coords(dims);
         for (int i = 0; i < dims; ++i) {
-            feasible_coords[i] = (mbr[i][0] + mbr[i][1]) / 2.0;
+            feasible_coords[i] = (mbr[i].first + mbr[i].second) / 2.0;
         }
         Point feasible_pnt(feasible_coords, dims);
-        free(feasible_coords);
-
-        numCells = 1;
-        cells = (Cell**)malloc(sizeof(Cell*));
-        cells[0] = new Cell(0, "", leaf_covered, {}, leaf.mbr, dims, feasible_pnt);
+        cells.push_back(std::make_shared<Cell>(0, "", leaf_covered, std::vector<std::shared_ptr<HalfSpace>>{}, leaf.mbr, dims, feasible_pnt));
         return cells;
     }
 
@@ -411,8 +333,8 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
     // Configurazione dei bounds
     double* bounds = (double*)malloc(2 * num_vars * sizeof(double));
     for (int d = 0; d < dims; ++d) {
-        bounds[2 * d] = leaf.mbr[d][0];
-        bounds[2 * d + 1] = leaf.mbr[d][1];
+        bounds[2 * d] = leaf.mbr[d].first;
+        bounds[2 * d + 1] = leaf.mbr[d].second;
     }
     bounds[2 * dims] = 0.0; // Limite inferiore per la variabile slack
     bounds[2 * dims + 1] = kHighsInf; // Limite superiore per la variabile slack
@@ -443,7 +365,7 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
         b_ub[numHalfspaces] = 1.0;
 
         for (int b = 0; b < numHalfspaces; ++b) {
-            HalfSpace* hs = leaf.halfspaces[b];
+            auto hs = leaf.halfspaces[b];
             if (hamstr[b] == '0') {
                 for (int i = 0; i < dims; ++i) {
                     A_ub[b * num_vars + i] = -hs->coeff[i];
@@ -465,18 +387,15 @@ Cell** searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings
         if (result->status == static_cast<int>(HighsModelStatus::kOptimal)) {
             // Soluzione trovata
             double* solution = result->x;
-            double* feasible_coords = (double*)malloc(dims * sizeof(double));
+            std::vector<double> feasible_coords;
+            feasible_coords.reserve(dims);
             for (int i = 0; i < dims; ++i) {
                 feasible_coords[i] = solution[i];
             }
             Point feasible_pnt(feasible_coords, dims);
-            free(feasible_coords);
 
             // Crea un nuovo Cell e aggiungilo alla lista
-            Cell* cell = new Cell(0, hamstr, leaf_covered, leaf.halfspaces, leaf.mbr, dims, feasible_pnt);
-            numCells++;
-            cells = (Cell**)realloc(cells, numCells * sizeof(Cell*));
-            cells[numCells - 1] = cell;
+            cells.push_back(std::make_shared<Cell>(0, hamstr, leaf_covered, leaf.halfspaces, leaf.mbr, dims, feasible_pnt));
 
             free_linprog_result(result);
             break; // Esci dal loop poiché hai trovato una soluzione

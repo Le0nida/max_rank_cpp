@@ -1,12 +1,11 @@
 #include "query.h"
-#include <cstdlib> // Per malloc, free
+#include <algorithm>  // Per std::remove_if
+#include <memory>
 
-void getdominators(Point** data, int data_size, const Point& p, Point*** dominators, int& num_dominators) {
-    num_dominators = 0;
-    *dominators = nullptr;
+void getdominators(const std::vector<std::shared_ptr<Point>>& data, const Point& p, std::vector<std::shared_ptr<Point>>& dominators) {
+    dominators.clear();  // Pulisci il vector
 
-    for (int idx = 0; idx < data_size; ++idx) {
-        Point* r = data[idx];
+    for (const auto& r : data) {
         bool less_equal = true;
         bool less = false;
 
@@ -21,19 +20,15 @@ void getdominators(Point** data, int data_size, const Point& p, Point*** dominat
         }
 
         if (less_equal && less) {
-            num_dominators++;
-            *dominators = (Point**)realloc(*dominators, num_dominators * sizeof(Point*));
-            (*dominators)[num_dominators - 1] = r;
+            dominators.push_back(r);  // Aggiungi dominatori al vector
         }
     }
 }
 
-void getdominees(Point** data, int data_size, const Point& p, Point*** dominees, int& num_dominees) {
-    num_dominees = 0;
-    *dominees = nullptr;
+void getdominees(const std::vector<std::shared_ptr<Point>>& data, const Point& p, std::vector<std::shared_ptr<Point>>& dominees) {
+    dominees.clear();  // Pulisci il vector
 
-    for (int idx = 0; idx < data_size; ++idx) {
-        Point* r = data[idx];
+    for (const auto& r : data) {
         bool greater_equal = true;
         bool greater = false;
 
@@ -48,19 +43,15 @@ void getdominees(Point** data, int data_size, const Point& p, Point*** dominees,
         }
 
         if (greater_equal && greater) {
-            num_dominees++;
-            *dominees = (Point**)realloc(*dominees, num_dominees * sizeof(Point*));
-            (*dominees)[num_dominees - 1] = r;
+            dominees.push_back(r);  // Aggiungi dominees al vector
         }
     }
 }
 
-void getincomparables(Point** data, int data_size, const Point& p, Point*** incomparables, int& num_incomparables) {
-    num_incomparables = 0;
-    *incomparables = nullptr;
+void getincomparables(const std::vector<std::shared_ptr<Point>>& data, const Point& p, std::vector<std::shared_ptr<Point>>& incomparables) {
+    incomparables.clear();  // Pulisci il vector
 
-    for (int idx = 0; idx < data_size; ++idx) {
-        Point* r = data[idx];
+    for (const auto& r : data) {
         bool less = false;
         bool greater = false;
 
@@ -74,18 +65,15 @@ void getincomparables(Point** data, int data_size, const Point& p, Point*** inco
         }
 
         if (less && greater) {
-            num_incomparables++;
-            *incomparables = (Point**)realloc(*incomparables, num_incomparables * sizeof(Point*));
-            (*incomparables)[num_incomparables - 1] = r;
+            incomparables.push_back(r);  // Aggiungi incomparables al vector
         }
     }
 }
 
-void getskyline(Point** data, int data_size, Point*** skyline, int& num_skyline) {
-    num_skyline = 0;
-    *skyline = nullptr;
+void getskyline(const std::vector<std::shared_ptr<Point>>& data, std::vector<std::shared_ptr<Point>>& skyline) {
+    skyline.clear();  // Pulisci il vector
 
-    auto dominates = [](const Point* p, const Point* r) {
+    auto dominates = [](const std::shared_ptr<Point>& p, const std::shared_ptr<Point>& r) {
         bool less_equal = true;
         bool less = false;
 
@@ -102,36 +90,24 @@ void getskyline(Point** data, int data_size, Point*** skyline, int& num_skyline)
         return less_equal && less;
     };
 
-    for (int idx = 0; idx < data_size; ++idx) {
-        Point* pnt = data[idx];
+    for (const auto& pnt : data) {
         bool dominated = false;
 
-        for (int w_idx = 0; w_idx < num_skyline; ++w_idx) {
-            if (dominates((*skyline)[w_idx], pnt)) {
+        for (const auto& s : skyline) {
+            if (dominates(s, pnt)) {
                 dominated = true;
                 break;
             }
         }
 
         if (!dominated) {
-            // Rimuovi i punti nel window che sono dominati da pnt
-            int new_num_skyline = 0;
-            Point** new_skyline = nullptr;
-            for (int w_idx = 0; w_idx < num_skyline; ++w_idx) {
-                if (!dominates(pnt, (*skyline)[w_idx])) {
-                    new_num_skyline++;
-                    new_skyline = (Point**)realloc(new_skyline, new_num_skyline * sizeof(Point*));
-                    new_skyline[new_num_skyline - 1] = (*skyline)[w_idx];
-                }
-            }
-            free(*skyline);
-            *skyline = new_skyline;
-            num_skyline = new_num_skyline;
+            // Rimuovi i punti nel skyline che sono dominati da pnt
+            skyline.erase(std::remove_if(skyline.begin(), skyline.end(), [&](const std::shared_ptr<Point>& s) {
+                return dominates(pnt, s);
+            }), skyline.end());
 
-            // Aggiungi pnt al window
-            num_skyline++;
-            *skyline = (Point**)realloc(*skyline, num_skyline * sizeof(Point*));
-            (*skyline)[num_skyline - 1] = pnt;
+            // Aggiungi pnt allo skyline
+            skyline.push_back(pnt);
         }
     }
 }

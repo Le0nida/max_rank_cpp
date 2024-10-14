@@ -7,7 +7,9 @@
 
 #include "geom.h"
 #include <cstdlib> // Per malloc e free
+#include <memory>
 #include <vector>
+
 
 enum Position {
     POS_IN = 1,
@@ -36,27 +38,20 @@ public:
 class HalfSpace {
 public:
     long int pntID;
-    double* coeff; // Coefficients (C-style array)
+    std::vector<double> coeff;
     double known;
     Arrangement arr;
     int dims;
 
-    // Constructor
-    HalfSpace(long int pntID, double* coeff, double known, int dims);
-
-    // Destructor
-    ~HalfSpace();
-
-    // Disable copy constructor and assignment
-    HalfSpace(const HalfSpace&) = delete;
-    HalfSpace& operator=(const HalfSpace&) = delete;
+    HalfSpace(long int pntID, const std::vector<double>& coeff, double known, int dims)
+        : pntID(pntID), coeff(coeff), known(known), arr(AUGMENTED), dims(dims) {}
 
     // Equality operator
     bool operator==(const HalfSpace& other) const;
 };
 
 // Generate halfspaces from a point and a set of records
-HalfSpace** genhalfspaces(const Point& p, Point** records, int numRecords, int& numHalfSpaces, std::vector<HalfSpace *>& halfspacesToInsert);
+std::vector<std::shared_ptr<HalfSpace>> genhalfspaces(const Point& p, const std::vector<std::shared_ptr<Point>>& records);
 
 // Other function declarations
 Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfspace);

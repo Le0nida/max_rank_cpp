@@ -7,37 +7,6 @@
 #include <cstring> // Per memcpy
 #include <bitset>
 
-Point::Point(double* coord, int dims, int id) : id(id), dims(dims) {
-    this->coord = (double*)malloc(dims * sizeof(double));
-    memcpy(this->coord, coord, dims * sizeof(double));
-}
-
-Point::~Point() {
-    if (coord) {
-        free(coord);
-        coord = nullptr;
-    }
-}
-
-Point::Point(const Point& other) : id(other.id), dims(other.dims) {
-    coord = (double*)malloc(dims * sizeof(double));
-    memcpy(coord, other.coord, dims * sizeof(double));
-}
-
-// Assignment operator
-Point& Point::operator=(const Point& other) {
-    if (this == &other) return *this;
-
-    if (coord) free(coord);
-
-    dims = other.dims;
-    id = other.id;
-    coord = (double*)malloc(dims * sizeof(double));
-    memcpy(coord, other.coord, dims * sizeof(double));
-
-    return *this;
-}
-
 bool Point::operator==(const Point& other) const {
     if (dims != other.dims) {
         return false;
@@ -71,9 +40,9 @@ void genmasks(int dims, double***& pts_mask, int& num_pts, double***& nds_mask, 
         int current_num_pts = num_pts;
         for (int p = 0; p < current_num_pts; ++p) {
             // Punto lower
-            double** lower = (double**)malloc(dims * sizeof(double*));
+            auto** lower = (double**)malloc(dims * sizeof(double*));
             // Punto higher
-            double** higher = (double**)malloc(dims * sizeof(double*));
+            auto** higher = (double**)malloc(dims * sizeof(double*));
 
             for (int i = 0; i < dims; ++i) {
                 lower[i] = (double*)malloc(sizeof(double));
@@ -106,7 +75,7 @@ void genmasks(int dims, double***& pts_mask, int& num_pts, double***& nds_mask, 
 
     // Genera mbr
     num_nds = 1 << dims;
-    double**** mbr = (double****)malloc(num_nds * sizeof(double***));
+    auto**** mbr = (double****)malloc(num_nds * sizeof(double***));
     for (int quad = 0; quad < num_nds; ++quad) {
         mbr[quad] = (double***)malloc(dims * sizeof(double**));
         for (int d = 0; d < dims; ++d) {

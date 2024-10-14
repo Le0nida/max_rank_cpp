@@ -6,45 +6,38 @@
 #define QNODE_H
 
 #include <vector>
-
+#include <memory>
 #include "halfspace.h"
-
-extern int globalNodeID;
-extern int numOfSubdivisions;
-extern int normalizedMax;
-extern int maxCapacity;
 
 // Definizione dell'enumerazione per la posizione rispetto all'halfspace
 enum PositionHS { BELOW, ABOVE, OVERLAPPED };
 
 class QNode {
 public:
-    // Costruttore e distruttore
-    QNode(QNode* parent, double** mbr, int dims);
-    ~QNode();
+    long int nodeID;
+    QNode* parent;
+    std::vector<std::pair<double, double>> mbr; // MBR rappresentato come vettore di coppie (min, max)
+    bool norm;
+    bool leaf;
+    size_t order;
+    std::vector<std::shared_ptr<HalfSpace>> covered;
+    std::vector<std::shared_ptr<HalfSpace>> halfspaces;
+    std::vector<std::unique_ptr<QNode>> children;
+    int dims;
 
-    // Proprietà pubbliche
-    long int nodeID;            // ID univoco del nodo
-    QNode* parent;              // Puntatore al nodo genitore
-    double** mbr;               // Minimum bounding region (array C-like)
-    bool norm;                  // Flag di normalizzazione
-    bool leaf;                  // Flag di foglia
-    size_t order;               // Ordine del nodo
-    std::vector<HalfSpace *> covered;
-    std::vector<HalfSpace *> halfspaces;          // ID degli halfpsaces nel nodo
-    QNode** children;           // Puntatore ai figli
-    int dims;                   // Numero di dimensioni del nodo
+    QNode(QNode* parent, const std::vector<std::pair<double, double>>& mbr, int dims);
 
-    // Funzioni membro
-    [[nodiscard]] inline bool isRoot() const { return parent == nullptr; }
-    [[nodiscard]] inline bool isLeaf() const { return leaf; }
     void setOrder();
-    PositionHS MbrVersusHalfSpace(const double* hs_coeff, double hs_known);
+    PositionHS MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double hs_known);
     void splitNode();
-    double*** genSubdivisions();
+    std::vector<std::vector<std::pair<double, double>>> genSubdivisions();
     bool checkNodeValidity();
-    std::vector<HalfSpace *> getTotalCovered(int& totalCovered) const;
-    void appendHalfspace(HalfSpace * hsID);
+    [[nodiscard]] std::vector<std::shared_ptr<HalfSpace>> getTotalCovered() const;
+    void appendHalfspace(const std::shared_ptr<HalfSpace>& hs);
+
+    [[nodiscard]] bool isRoot() const { return parent == nullptr; }
+    [[nodiscard]] bool isLeaf() const { return leaf; }
 };
+
 
 #endif // QNODE_H

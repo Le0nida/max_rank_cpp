@@ -5,11 +5,15 @@
 #ifndef QUERY_H
 #define QUERY_H
 
-#include "geom.h"
+#include <memory>
 
-void getdominators(Point** data, int data_size, const Point& p, Point*** dominators, int& num_dominators);
-void getdominees(Point** data, int data_size, const Point& p, Point*** dominees, int& num_dominees);
-void getincomparables(Point** data, int data_size, const Point& p, Point*** incomparables, int& num_incomparables);
-void getskyline(Point** data, int data_size, Point*** skyline, int& num_skyline);
+#include "geom.h"
+#include <vector>
+
+void getdominators(const std::vector<std::shared_ptr<Point>>& data, const Point& p, std::vector<std::shared_ptr<Point>>& dominators);
+void getdominees(const std::vector<std::shared_ptr<Point>>& data, const Point& p, std::vector<std::shared_ptr<Point>>& dominees);
+void getincomparables(const std::vector<std::shared_ptr<Point>>& data, const Point& p, std::vector<std::shared_ptr<Point>>& incomparables);
+void getskyline(const std::vector<std::shared_ptr<Point>>& data, std::vector<std::shared_ptr<Point>>& skyline);
 
 #endif // QUERY_H
+
