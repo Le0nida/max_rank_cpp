@@ -79,10 +79,6 @@ std::pair<int, std::vector<std::shared_ptr<Cell>>> aa_hd(const std::vector<std::
                 std::unique_ptr<char*[]> hamstrings = std::unique_ptr<char*[]>(genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight, numHamstrings));
 
                 std::vector<std::shared_ptr<Cell>> cells = searchmincells_lp(*leaf, hamstrings.get(), numHamstrings);
-                for (auto c: cells)
-                {
-                    std::cout << "> Mincell " << ": Covered " << c.get()->covered.size() << std::endl;
-                }
                 if (!cells.empty()) {
                     for (auto& cell : cells) {
                         cell->order = leaf_order + hamweight;
@@ -106,8 +102,6 @@ std::pair<int, std::vector<std::shared_ptr<Cell>>> aa_hd(const std::vector<std::
         std::vector<std::shared_ptr<HalfSpace>> to_expand;
         int i = 0;
         for (auto& cell : mincells) {
-            std::cout << "> Mincell " << ++i << ": Covered " << cell->covered.size() << std::endl;
-
             if (cell->issingular()) {
                 minorder_singular = cell->order;
                 mincells_singular.push_back(cell);

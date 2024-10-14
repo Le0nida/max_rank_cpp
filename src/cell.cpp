@@ -311,7 +311,6 @@ std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** h
     std::vector<std::shared_ptr<Cell>> cells;
 
     auto leaf_covered = leaf.getTotalCovered();
-    std::cout << "> Mincell " << ": TotalCovered " << leaf_covered.size() << std::endl;
 
     size_t numHalfspaces = leaf.halfspaces.size();
     if (numHalfspaces == 0) {

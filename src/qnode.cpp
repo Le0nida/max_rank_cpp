@@ -19,7 +19,7 @@ QNode::QNode(QNode* parent, const std::vector<std::pair<double, double>>& mbr, i
 
 void QNode::setOrder() {
     size_t localOrder = covered.size();
-    auto& ref = parent;
+    QNode* ref = parent;
 
     while (ref != nullptr) {
         localOrder += ref->covered.size();
