@@ -416,7 +416,7 @@ std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** h
 }
 
 
-int Dimen = 4;
+int Dimen = 4 - 1;
 #define MAXLOOP 1000
 #define MAXDIM 10
 #define ZEROEXTENT 1e-15
@@ -549,7 +549,7 @@ void GenBinaryString(long int len1, long int Max, std::multimap<int, vector<char
     return;
 }
 
-bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, float subDataSpace[],
+bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, const std::vector<std::pair<double, double>>& subDataSpace,
                                  std::multimap<int, string> &InValidHammingStr) //test whether two halfspaces are compatible w.r.t Hamming distance 00,01,10,11
 {
 
@@ -579,9 +579,11 @@ bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, st
                 interiorPtExists = false;
                 break;
             }
-            for (int j = 0; j < Dimen; j++)
-                InteriorPt[j] =
-                        subDataSpace[j] + (subDataSpace[Dimen + j] - subDataSpace[j]) * (float(rand()) / RAND_MAX);
+            for (int j = 0; j < Dimen; j++) {
+                double lower = subDataSpace[j].first;
+                double upper = subDataSpace[j].second;
+                InteriorPt[j] = lower + (upper - lower) * (double(rand()) / RAND_MAX);
+            }
 
             count = 0;
             if (strcmp(HammingStr[i], "00") == 0)    //for case: ax_1+bx_2+... > d, lx_1+mx_2+... > t
@@ -665,7 +667,7 @@ bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, st
 
 
 bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char> &HammingString,
-                                    std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, float subDataSpace[]) {
+                                    std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, const std::vector<std::pair<double, double>>& subDataSpace) {
     int NoOfHyperplanes = 0;
     long int NoOfHalfSpaces = HalfSpaceIDs.size();
 
@@ -700,8 +702,11 @@ bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char>
         //Discard query points over y = 1 - x (in 3D), as the last parameter (yield by 1 - x - y) would be negative
         //By doing so eventual mincells in such regions will not be found
         while(true){
-            for (int i = 0; i < Dimen; i++)
-                InteriorPt[i] = subDataSpace[i] + (subDataSpace[Dimen + i] - subDataSpace[i]) * dis(gen);
+            for (int i = 0; i < Dimen; i++) {
+                double lower = subDataSpace[i].first;
+                double upper = subDataSpace[i].second;
+                InteriorPt[i] = lower + (upper - lower) * dis(gen);
+            }
 
             float sum = 0;
             for (int i = 0; i < Dimen - 1; i++)
@@ -769,13 +774,11 @@ bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char>
     for (int i = 1; i <= 2; i++) {
         if (i == 2)
             Cooef = -Cooef;
-        for (int j = 1; j <= Dimen; j++) {
-            for (int m = 1; m <= Dimen; m++)
-                (m == j) ? fprintf(fout1, "%d  ", Cooef) : fprintf(fout1, "0  ");
-            if (i == 2)
-                fprintf(fout1, "%f\n", -subDataSpace[Dimen + j - 1]);
-            else
-                fprintf(fout1, "%f\n", subDataSpace[j - 1]);
+        for (int j = 0; j < Dimen; j++) {
+            for (int m = 0; m < Dimen; m++)
+                fprintf(fout1, "%d  ", (m == j) ? Cooef : 0);
+            double bound = (i == 2) ? -subDataSpace[j].second : subDataSpace[j].first;
+            fprintf(fout1, "%f\n", bound);
         }
     }
     ///
@@ -803,7 +806,7 @@ bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char>
     return true;
 }
 
-bool MbrIsValid(const int &Dimen, const float hs[], const float mbr[],
+bool MbrIsValid(const int &Dimen, const float hs[], const std::vector<std::pair<double, double>>& mbr,
                 vector<string> &Comb) {   //position of an MBR to a halfspace: is the point above, below, or intersected by the halfspace?
 
     int numAbove = 0;
@@ -817,11 +820,11 @@ bool MbrIsValid(const int &Dimen, const float hs[], const float mbr[],
         std::vector<double> coord;
 
         long int numOfDimen = Comb[i].size();
-        for (int j = 0; j < numOfDimen; j++) {
+        for (int j = 0; j < Dimen; j++) {
             if (Comb[i][j] == '0')
-                coord[j] = mbr[j];
-            if (Comb[i][j] == '1')
-                coord[j] = mbr[Dimen + j];
+                coord[j] = mbr[j].first;
+            else if (Comb[i][j] == '1')
+                coord[j] = mbr[j].second;
         }
         float sum = 0;
         for (int k = 0; k < numOfDimen; k++) sum = sum + coord[k];
