@@ -549,7 +549,7 @@ void GenBinaryString(long int len1, long int Max, std::multimap<int, vector<char
     return;
 }
 
-bool Cell::testHalfspacePair(long int HS1, long int IdxHS1, long int HS2, long int IdxHS2, float subDataSpace[],
+bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, float subDataSpace[],
                                  std::multimap<int, string> &InValidHammingStr) //test whether two halfspaces are compatible w.r.t Hamming distance 00,01,10,11
 {
 
@@ -589,45 +589,45 @@ bool Cell::testHalfspacePair(long int HS1, long int IdxHS1, long int HS2, long i
                 HammingDistance = 0;
                 float sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
-                if (sum > HalfSpaces[HS1][Dimen]) count++;
+                    sum = sum + HS1.get()->coeff[j] * InteriorPt[j];
+                if (sum > HS1.get()->coeff[Dimen]) count++;
                 sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
-                if (sum > HalfSpaces[HS2][Dimen]) count++;
+                    sum = sum + HS2.get()->coeff[j] * InteriorPt[j];
+                if (sum > HS2.get()->coeff[Dimen]) count++;
             } else if (strcmp(HammingStr[i], "01") == 0)   //for case: ax_1+bx_2+... > d, lx_1+mx_2+... <= t
             {
                 HammingDistance = 1;
                 float sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
-                if (sum > HalfSpaces[HS1][Dimen]) count++;
+                    sum = sum + HS1.get()->coeff[j] * InteriorPt[j];
+                if (sum > HS1.get()->coeff[Dimen]) count++;
                 sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
-                if (sum <= HalfSpaces[HS2][Dimen]) count++;
+                    sum = sum + HS2.get()->coeff[j] * InteriorPt[j];
+                if (sum <= HS2.get()->coeff[Dimen]) count++;
             } else if (strcmp(HammingStr[i], "10") == 0)   //for case: ax_1+bx_2+... <= d, lx_1+mx_2+... > t
             {
                 HammingDistance = 1;
                 float sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
-                if (sum <= HalfSpaces[HS1][Dimen]) count++;
+                    sum = sum + HS1.get()->coeff[j] * InteriorPt[j];
+                if (sum <= HS1.get()->coeff[Dimen]) count++;
                 sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
-                if (sum > HalfSpaces[HS2][Dimen]) count++;
+                    sum = sum + HS2.get()->coeff[j] * InteriorPt[j];
+                if (sum > HS2.get()->coeff[Dimen]) count++;
             } else if (strcmp(HammingStr[i], "11") == 0)   //for case: ax_1+bx_2+... <= d, lx_1+mx_2+... <= t
             {
                 HammingDistance = 2;
                 float sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
-                if (sum <= HalfSpaces[HS1][Dimen]) count++;
+                    sum = sum + HS1.get()->coeff[j] * InteriorPt[j];
+                if (sum <= HS1.get()->coeff[Dimen]) count++;
                 sum = 0;
                 for (int j = 0; j < Dimen; j++)
-                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
-                if (sum <= HalfSpaces[HS2][Dimen]) count++;
+                    sum = sum + HS2.get()->coeff[j] * InteriorPt[j];
+                if (sum <= HS2.get()->coeff[Dimen]) count++;
             }
             if (count == 2) {
                 //cout << "We have found an interior point!" << endl;
@@ -665,7 +665,7 @@ bool Cell::testHalfspacePair(long int HS1, long int IdxHS1, long int HS2, long i
 
 
 bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char> &HammingString,
-                                    vector<long int> &HalfSpaceIDs, float subDataSpace[]) {
+                                    std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, float subDataSpace[]) {
     int NoOfHyperplanes = 0;
     long int NoOfHalfSpaces = HalfSpaceIDs.size();
 
@@ -718,21 +718,21 @@ bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char>
 
         int index = 0;
         long int count = 0;
-        for (vector<long int>::iterator sItr = HalfSpaceIDs.begin(); sItr != HalfSpaceIDs.end(); sItr++) {
+        for (auto sItr = HalfSpaceIDs.begin(); sItr != HalfSpaceIDs.end(); sItr++) {
             if (HammingString[index] == '0')    //for the case where ax_1+bx_2+... <= d    1
             {
-                long int hsID = *sItr;
+                auto hsID = *sItr;
                 float sum = 0;
                 for (int i = 0; i < Dimen; i++)
-                    sum = sum + HalfSpaces[hsID][i] * InteriorPt[i];
-                if (sum <= HalfSpaces[hsID][Dimen]) count++;
+                    sum = sum + hsID.get()->coeff[i] * InteriorPt[i];
+                if (sum <= hsID.get()->coeff[Dimen]) count++;
             } else if (HammingString[index] == '1')   //for the case where ax_1+bx_2+... > d   0
             {
-                long int hsID = *sItr;
+                auto hsID = *sItr;
                 float sum = 0;
                 for (int i = 0; i < Dimen; i++)
-                    sum = sum + HalfSpaces[hsID][i] * InteriorPt[i];
-                if (sum >= HalfSpaces[hsID][Dimen]) count++;
+                    sum = sum + hsID.get()->coeff[i] * InteriorPt[i];
+                if (sum >= hsID.get()->coeff[Dimen]) count++;
             }
             index++;
         }
@@ -781,19 +781,19 @@ bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char>
     ///
 
     int index = 0;
-    for (vector<long int>::iterator sItr = HalfSpaceIDs.begin(); sItr != HalfSpaceIDs.end(); sItr++) {
+    for (auto sItr = HalfSpaceIDs.begin(); sItr != HalfSpaceIDs.end(); sItr++) {
         if (HammingString[index] == '0')    //for the case where ax_1+bx_2+... <= d  1
         {
-            long int hsID = *sItr;
+            auto hsID = *sItr;
             for (int i = 0; i < Dimen; i++)
-                fprintf(fout1, "%f ", HalfSpaces[hsID][i]);
-            fprintf(fout1, "%f\n", -HalfSpaces[hsID][Dimen]);   //the offset
+                fprintf(fout1, "%f ", hsID.get()->coeff[i]);
+            fprintf(fout1, "%f\n", -hsID.get()->coeff[Dimen]);   //the offset
         } else if (HammingString[index] == '1')   //for the case where ax_1+bx_2+... > d   0
         {
-            long int hsID = *sItr;
+            auto hsID = *sItr;
             for (int i = 0; i < Dimen; i++)
-                fprintf(fout1, "%f ", -HalfSpaces[hsID][i]);
-            fprintf(fout1, "%f\n", HalfSpaces[hsID][Dimen]);   //the offset
+                fprintf(fout1, "%f ", -hsID.get()->coeff[i]);
+            fprintf(fout1, "%f\n", hsID.get()->coeff[Dimen]);   //the offset
         }
         index++;
     }
@@ -832,6 +832,44 @@ bool MbrIsValid(const int &Dimen, const float hs[], const float mbr[],
     if (numAbove == numOfVertices) return false;
     if (numBelow == numOfVertices) return true;
 
+}
+
+std::vector<string> readCombinations() {
+
+    std::vector<string> Comb;
+    FILE *fp;
+    char *token;
+    char m_separator[] = " \n\t";
+    char buf[512];
+    string FileName[] = {"bin/Comb2D.txt", "bin/Comb3D.txt", "bin/Comb4D.txt", "bin/Comb5D.txt", "bin/Comb6D.txt", "bin/Comb7D.txt",
+                         "bin/Comb8D.txt", "bin/Comb9D.txt"};
+    string strComb;
+
+    fp = fopen(FileName[Dimen - 2].c_str(), "r");
+    if (fp == NULL) {
+        std::cout << "error in fileopen!" << std::endl;
+        exit(0);
+    }
+
+    fgets(buf, 512, fp);
+    if (atoi(buf) != Dimen) {
+        std::cout << "Error! Dimensions are not equal!" << std::endl;
+        exit(0);
+    }
+    while (fgets(buf, 512, fp) != NULL) {
+        token = strtok(buf, m_separator);
+        //while (token != NULL){
+        //	token = strtok(NULL,m_separator);
+        //}
+        string strComb = token;
+        Comb.push_back(strComb);
+    }
+    fclose(fp);
+
+    if (false)
+        std::cout << "QuadTree Dimen=" << Dimen << ", reading combination finished!" << std::endl;
+
+    return Comb;
 }
 
 long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Leaves,
@@ -890,6 +928,7 @@ long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Le
     long int NoOfZeroExtentBinStrings = 0;
     long int NoOfDiscardedCells = 0;
 
+    std::vector<string> Comb = readCombinations();
     for (itr = Leaves.begin(); itr != Leaves.end();)    // && NotFoundAllMinCells;)
     {
 
@@ -949,15 +988,15 @@ long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Le
             //test compatibility of Hamming distance for each pair of halfspaces
             std::multimap<int, string> InValidHammingStr;
             long int idx1 = 0, idx2;
-            for (vector<long>::iterator sItr = (itr1->second->halfspaces).begin();
+            for (auto sItr = (itr1->second->halfspaces).begin();
                  sItr != (itr1->second->halfspaces).end(); sItr++) {
-                long int hs1 = (*sItr);
-                vector<long>::iterator sItr1;
+                auto hs1 = (*sItr);
+                vector<std::shared_ptr<HalfSpace>>::iterator sItr1;
                 sItr1 = sItr;
                 sItr1++;
                 idx2 = idx1 + 1;
                 for (; sItr1 != (itr1->second->halfspaces).end(); sItr1++) {
-                    long int hs2 = (*sItr1);
+                    auto hs2 = (*sItr1);
                     testHalfspacePair(hs1, idx1, hs2, idx2, itr1->second->mbr, InValidHammingStr);
                     idx2++;
                 }
