@@ -5,6 +5,8 @@
 #ifndef CELL_H
 #define CELL_H
 
+#include <map>
+#include <set>
 #include <utility>
 #include <vector>
 #include <string>
@@ -42,6 +44,16 @@ public:
     ~Cell() = default; // Lasciamo che i vector gestiscano la memoria
 
     [[nodiscard]] bool issingular() const;
+
+    bool testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, const std::vector<std::pair<double, double>>& subDataSpace,
+                                 std::multimap<int, std::string> &InValidHammingStr);
+
+    bool GenHammingHalfSpaces(char *OutFileName, const int Dimen, std::vector<char> &HammingString,
+                                    std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, const std::vector<std::pair<double, double>>& subDataSpace);
+
+    long int optimizedInNodeIntersection(std::vector<std::pair<long, QNode *> > &Leaves,
+                                               std::vector<std::set<long int> > &minCellHalfSpaces,
+                                               std::vector<std::vector<char> > &binaryString);
 
     int order;
     std::string mask;
