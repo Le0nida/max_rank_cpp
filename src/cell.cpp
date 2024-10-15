@@ -8,7 +8,10 @@
 #include <cstdlib>   // Per malloc, free
 #include <src/Highs.h>
 #include <limits>
+#include <set>
 #include <utility>
+#include <fstream>
+#include <bits/random.h>
 
 // Constructor for Interval class remains unchanged
 Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
@@ -411,3 +414,750 @@ std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** h
 
     return cells;
 }
+
+
+int Dimen = 4;
+#define MAXLOOP 1000
+#define MAXDIM 10
+#define ZEROEXTENT 1e-15
+#define MAXNOBINSTRINGTOCHECK 60000
+
+void myitoa(unsigned long val, char *buf, unsigned radix) {
+    char *p;
+    char *firstdig;
+    char temp;
+    unsigned digval;
+
+    p = buf;
+    firstdig = p;
+
+    do {
+        digval = (unsigned) (val % radix);
+        val /= radix;
+
+        if (digval > 9)
+            *p++ = (char) (digval - 10 + 'a');
+        else
+            *p++ = (char) (digval + '0');
+
+    } while (val > 0);
+
+    *p-- = '\0';
+    do {
+        temp = *p;
+        *p = *firstdig;
+        *firstdig = temp;
+        --p;
+        ++firstdig;
+    } while (firstdig < p);
+}
+
+void
+GenString(long int stringLen, long int HammingDistance, long int currentLen, long int start, vector<char> &hammingStr,
+          std::multimap<int, vector<char> > &binString) {
+    if (currentLen < 0) return;
+
+    for (long int i = start; i < stringLen; i++) {
+        for (long int j = start; j < i; j++)
+            hammingStr.push_back('0');
+        hammingStr.push_back('1');
+        GenString(stringLen, HammingDistance, currentLen - 1, i + 1, hammingStr, binString);
+        if (currentLen == 0) {
+            for (long int j = i + 1; j < stringLen; j++)
+                hammingStr.push_back('0');
+
+            vector<char> tmpHammingStr = hammingStr;
+            typedef std::multimap<int, vector<char> >::value_type VT;
+            binString.insert(VT(HammingDistance, tmpHammingStr));
+
+            //cout << "Generated Hamming string: " << string(tmpHammingStr.begin(),tmpHammingStr.end()) << endl;
+
+            for (long int j = i + 1; j < stringLen; j++)
+                hammingStr.pop_back();
+        }
+        hammingStr.pop_back();
+        for (long int j = start; j < i; j++)
+            hammingStr.pop_back();
+    }
+}
+
+void GenLenNBinaryString(long int len1, long int HammingDistance, std::multimap<int, vector<char> > &binString) {
+    vector<char> hammingStr;
+
+    if (HammingDistance == 0) {
+        for (long int i = 0; i < len1; i++) hammingStr.push_back('0');
+        typedef std::multimap<int, vector<char> >::value_type VT;
+        binString.insert(VT(0, hammingStr));
+        return;
+    }
+
+    if (HammingDistance == 1) {
+        for (long int i = 0; i < len1; i++) {
+            hammingStr.clear();
+            for (long int j = 0; j < i; j++)
+                hammingStr.push_back('0');
+            hammingStr.push_back('1');
+            for (long int j = i + 1; j < len1; j++)
+                hammingStr.push_back('0');
+
+            typedef std::multimap<int, vector<char> >::value_type VT;
+            binString.insert(VT(1, hammingStr));
+        }
+        return;
+    }
+
+
+    GenString(len1, HammingDistance, HammingDistance - 1, 0, hammingStr, binString);
+
+    return;
+}
+
+
+void GenBinaryString(long int len1, long int Max, std::multimap<int, vector<char> > &binString) {
+    //ofstream fOut;
+    //fOut.open("CombSubspace.txt", ios::app);
+
+    typedef std::multimap<int, vector<char> >::value_type VT;
+
+    binString.clear();
+
+    char str[128], *b;
+    //int len1=int(log(Max)/log(2));
+    for (int i = 0; i < Max; i++) {
+        myitoa(i, str, 2);
+        int len = len1 - strlen(str);
+        b = new char[Max + 1];
+        strcpy(b, "");
+        for (int j = 1; j <= len; j++) strcat(b, "0");
+        strcat(b, str);
+        std::cout << "i= " << i << ", binary string: " << b << std::endl;
+        //fOut << b << endl;
+
+        //count the number of '1's
+        vector<char> tmpVec;
+        int NoOfOnes = 0;
+        for (int j = 0; j < strlen(b); j++) {
+            if (b[j] == '1') NoOfOnes++;
+            tmpVec.push_back(b[j]);
+        }
+        binString.insert(VT(NoOfOnes, tmpVec));
+
+        delete b;
+    }
+    //fOut.close();
+
+    return;
+}
+
+bool Cell::testHalfspacePair(long int HS1, long int IdxHS1, long int HS2, long int IdxHS2, float subDataSpace[],
+                                 std::multimap<int, string> &InValidHammingStr) //test whether two halfspaces are compatible w.r.t Hamming distance 00,01,10,11
+{
+
+    std::map<long int, long int>::iterator IntInt_mItr;
+    typedef std::map<long int, long int>::value_type IntIntVT;
+
+    typedef std::multimap<int, string>::value_type msVT;
+
+    char HammingStr[4][3] = {"00", "01", "10", "11"};
+
+    bool interiorPtExists;
+    float InteriorPt[MAXDIM];
+
+    //randomization process to generate an interior point
+    long int loops = 0;
+    long int count = 0;
+    int HammingDistance;
+
+    for (int i = 0; i < 4; i++) {
+        loops = 0;
+        interiorPtExists = true;
+        while (true) {
+            loops++;
+            if (loops >= MAXLOOP + 200) //low probability that an interior point exists for current halfspaces
+            {
+                //cout << "exceed the maximal loop limits, none interior point exists!" << endl;
+                interiorPtExists = false;
+                break;
+            }
+            for (int j = 0; j < Dimen; j++)
+                InteriorPt[j] =
+                        subDataSpace[j] + (subDataSpace[Dimen + j] - subDataSpace[j]) * (float(rand()) / RAND_MAX);
+
+            count = 0;
+            if (strcmp(HammingStr[i], "00") == 0)    //for case: ax_1+bx_2+... > d, lx_1+mx_2+... > t
+            {
+                HammingDistance = 0;
+                float sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
+                if (sum > HalfSpaces[HS1][Dimen]) count++;
+                sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
+                if (sum > HalfSpaces[HS2][Dimen]) count++;
+            } else if (strcmp(HammingStr[i], "01") == 0)   //for case: ax_1+bx_2+... > d, lx_1+mx_2+... <= t
+            {
+                HammingDistance = 1;
+                float sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
+                if (sum > HalfSpaces[HS1][Dimen]) count++;
+                sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
+                if (sum <= HalfSpaces[HS2][Dimen]) count++;
+            } else if (strcmp(HammingStr[i], "10") == 0)   //for case: ax_1+bx_2+... <= d, lx_1+mx_2+... > t
+            {
+                HammingDistance = 1;
+                float sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
+                if (sum <= HalfSpaces[HS1][Dimen]) count++;
+                sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
+                if (sum > HalfSpaces[HS2][Dimen]) count++;
+            } else if (strcmp(HammingStr[i], "11") == 0)   //for case: ax_1+bx_2+... <= d, lx_1+mx_2+... <= t
+            {
+                HammingDistance = 2;
+                float sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS1][j] * InteriorPt[j];
+                if (sum <= HalfSpaces[HS1][Dimen]) count++;
+                sum = 0;
+                for (int j = 0; j < Dimen; j++)
+                    sum = sum + HalfSpaces[HS2][j] * InteriorPt[j];
+                if (sum <= HalfSpaces[HS2][Dimen]) count++;
+            }
+            if (count == 2) {
+                //cout << "We have found an interior point!" << endl;
+                break;
+            }
+        }
+        if (!interiorPtExists) {
+            //long int Val1=HS1,Val2=HS2;        //form incompatible pairs by IDs of the halfspaces
+            long int Val1 = IdxHS1, Val2 = IdxHS2;    //form incompatible pairs by indices of the halfspaces in set 'intersectedHalfSpace'
+
+            if (Val1 > Val2) {
+                long int tmpInt;
+                tmpInt = Val1;
+                Val1 = Val2;
+                Val2 = tmpInt;
+            }
+            char m_Buf[1024], m_Buf1[256];
+            myitoa(Val1, m_Buf1, 10);
+            strcpy(m_Buf, m_Buf1);
+            strcat(m_Buf, "|");
+            myitoa(Val2, m_Buf1, 10);
+            strcat(m_Buf, m_Buf1);
+            strcat(m_Buf, "|");
+            strcat(m_Buf, HammingStr[i]);
+            string tmpString = m_Buf;
+
+            InValidHammingStr.insert(msVT(HammingDistance, tmpString));
+
+            //cout << "Hamming Distance: " << HammingDistance << ", String=" << tmpString << endl;
+
+        }
+    }
+    return true;
+}
+
+
+bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char> &HammingString,
+                                    vector<long int> &HalfSpaceIDs, float subDataSpace[]) {
+    int NoOfHyperplanes = 0;
+    long int NoOfHalfSpaces = HalfSpaceIDs.size();
+
+    bool interiorPtExists = true;
+    float InteriorPt[MAXDIM];
+
+    NoOfHyperplanes = 2 * Dimen + NoOfHalfSpaces;   //total number of halfspaces
+
+    //randomization process to generate an interior point
+    long int loops = 0;
+
+    //for (int i=0;i<Dimen;i++)
+    //     cout << "[" << subDataSpace[i] << "," << subDataSpace[Dimen+i] << "]"<< endl;
+
+    while (true) {
+        loops++;
+        //cout << "loop " << loops << endl;
+        if (loops >=
+            MAXLOOP) //there is a very low probability that an interior point exists for current set of halfspaces
+        {
+            //cout << "exceed the maximal loop limits, none interior point exists!" << endl;
+            interiorPtExists = false;
+            break;
+        }
+
+        // The original was using rand(), which has a bad randomness
+        // Also directly generate numbers between 0 and 1
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<> dis(0, 1);
+
+        //Discard query points over y = 1 - x (in 3D), as the last parameter (yield by 1 - x - y) would be negative
+        //By doing so eventual mincells in such regions will not be found
+        while(true){
+            for (int i = 0; i < Dimen; i++)
+                InteriorPt[i] = subDataSpace[i] + (subDataSpace[Dimen + i] - subDataSpace[i]) * dis(gen);
+
+            float sum = 0;
+            for (int i = 0; i < Dimen - 1; i++)
+                sum += InteriorPt[i];
+
+            if (InteriorPt[Dimen - 1] < 1 - sum)
+                break;
+        }
+
+        /*
+        for (int i = 0; i < Dimen; i++)
+            InteriorPt[i] = subDataSpace[i] + (subDataSpace[Dimen + i] - subDataSpace[i]) * (float(rand()) / RAND_MAX);
+        */
+
+        int index = 0;
+        long int count = 0;
+        for (vector<long int>::iterator sItr = HalfSpaceIDs.begin(); sItr != HalfSpaceIDs.end(); sItr++) {
+            if (HammingString[index] == '0')    //for the case where ax_1+bx_2+... <= d    1
+            {
+                long int hsID = *sItr;
+                float sum = 0;
+                for (int i = 0; i < Dimen; i++)
+                    sum = sum + HalfSpaces[hsID][i] * InteriorPt[i];
+                if (sum <= HalfSpaces[hsID][Dimen]) count++;
+            } else if (HammingString[index] == '1')   //for the case where ax_1+bx_2+... > d   0
+            {
+                long int hsID = *sItr;
+                float sum = 0;
+                for (int i = 0; i < Dimen; i++)
+                    sum = sum + HalfSpaces[hsID][i] * InteriorPt[i];
+                if (sum >= HalfSpaces[hsID][Dimen]) count++;
+            }
+            index++;
+        }
+        if (count == HalfSpaceIDs.size()) {
+            //cout << "We have found an interior point!" << endl;
+            //for (int i = 0; i < Dimen; i++) cout << InteriorPt[i] << " ";
+            //cout << endl;
+            break;
+        }
+    }
+    if (!interiorPtExists) {
+        //cout << "Oops, it's unlikely that an interior point exists!!" << endl;
+        return false;
+    }
+    //
+
+    FILE *fout1 = fopen(OutFileName, "w");
+    if (fout1 == NULL) {
+        std::cout << "Error in opening file " << OutFileName << std::endl;
+        getchar();
+        exit(0);
+    }
+
+    fprintf(fout1, "%d 1\n", Dimen);   //the dimensionality
+    for (int i = 0; i < Dimen; i++)
+        fprintf(fout1, "%f ",
+                InteriorPt[i]); //the feasible point found by Monte Carlo process above   *****************
+    fprintf(fout1, "\n");
+    fprintf(fout1, "%d\n", Dimen + 1);   //dimensionality + 1
+    fprintf(fout1, "%d\n", NoOfHyperplanes);  //the total number of hyperplanes for intersection
+
+    //output the 2*dimen bounding facets of the hypercube of the sub-dataspace [x_min,y_min,z_min,...] [x_max,y_max,z_max,...]
+    int Cooef = -1;
+    for (int i = 1; i <= 2; i++) {
+        if (i == 2)
+            Cooef = -Cooef;
+        for (int j = 1; j <= Dimen; j++) {
+            for (int m = 1; m <= Dimen; m++)
+                (m == j) ? fprintf(fout1, "%d  ", Cooef) : fprintf(fout1, "0  ");
+            if (i == 2)
+                fprintf(fout1, "%f\n", -subDataSpace[Dimen + j - 1]);
+            else
+                fprintf(fout1, "%f\n", subDataSpace[j - 1]);
+        }
+    }
+    ///
+
+    int index = 0;
+    for (vector<long int>::iterator sItr = HalfSpaceIDs.begin(); sItr != HalfSpaceIDs.end(); sItr++) {
+        if (HammingString[index] == '0')    //for the case where ax_1+bx_2+... <= d  1
+        {
+            long int hsID = *sItr;
+            for (int i = 0; i < Dimen; i++)
+                fprintf(fout1, "%f ", HalfSpaces[hsID][i]);
+            fprintf(fout1, "%f\n", -HalfSpaces[hsID][Dimen]);   //the offset
+        } else if (HammingString[index] == '1')   //for the case where ax_1+bx_2+... > d   0
+        {
+            long int hsID = *sItr;
+            for (int i = 0; i < Dimen; i++)
+                fprintf(fout1, "%f ", -HalfSpaces[hsID][i]);
+            fprintf(fout1, "%f\n", HalfSpaces[hsID][Dimen]);   //the offset
+        }
+        index++;
+    }
+    fclose(fout1);
+    //cout << "output data for halfspace intersection finished!" << endl;
+
+    return true;
+}
+
+bool MbrIsValid(const int &Dimen, const float hs[], const float mbr[],
+                vector<string> &Comb) {   //position of an MBR to a halfspace: is the point above, below, or intersected by the halfspace?
+
+    int numAbove = 0;
+    int numBelow = 0;
+    int numOn = 0;
+
+    long int numOfVertices = 0;
+    numOfVertices = Comb.size();
+
+    for (int i = 0; i < numOfVertices; i++) {
+        std::vector<double> coord;
+
+        long int numOfDimen = Comb[i].size();
+        for (int j = 0; j < numOfDimen; j++) {
+            if (Comb[i][j] == '0')
+                coord[j] = mbr[j];
+            if (Comb[i][j] == '1')
+                coord[j] = mbr[Dimen + j];
+        }
+        float sum = 0;
+        for (int k = 0; k < numOfDimen; k++) sum = sum + coord[k];
+        if (sum > hs[Dimen]) numAbove++;
+        if (sum < hs[Dimen]) numBelow++;
+    }
+
+    if (numAbove == numOfVertices) return false;
+    if (numBelow == numOfVertices) return true;
+
+}
+
+long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Leaves,
+                                               vector<std::set<long int> > &minCellHalfSpaces,
+                                               vector<vector<char> > &binaryString) //optimization of within node intersection
+{
+
+    bool verbose = false;
+
+    std::multimap<long int, QNode *> nodesToIntersect;   //store the nodes (in ascending order) by using the number of their intersected halfspaces
+    //multimap<long int, QuadNode *>::iterator itr, itr1;
+    vector<std::pair<long, QNode *> >::iterator itr, itr1;
+
+    std::multimap<int, string>::iterator msItr;
+
+    std::map<long int, long int>::iterator IntInt_mItr;
+
+    std::set<string>::iterator ssItr, ssItr1;
+    std::set<long int>::iterator sItr, sItr1;
+
+    vector<string> FilesToRemove;
+
+    if (Leaves.empty()) {
+        std::cout << "There is no leaf nodes to perform intersection!" << std::endl;
+        return -1;
+    }
+
+    FILE *fp_tmpIn;
+
+    char Buf[1024];
+    char *token;
+    char m_seperator[] = " :\n\t";
+
+    char volumeFilename[2048] = "Vol";
+    myitoa(Dimen, Buf, 10);
+    strcat(volumeFilename, Buf);
+    myitoa(rand(), Buf, 10);
+    strcat(volumeFilename, Buf);
+    strcat(volumeFilename, "D.txt");
+
+    char namePrefix[] = "./tmp/HalfSpaces";
+    char nameSuffix[] = ".txt";
+    char halfspaceFileName[1024];
+
+    long int minOrder = INT_MAX;
+
+    long int NoOfCoveredHS, NoOfIntersectedHS;
+    bool NotFoundAllMinCells = true;
+
+    long int NoOfInvalidLeaves = 0;
+    long int NoOfNodesLeft = Leaves.size();
+
+    long int NoOfBitStringsProcessed = 0;
+    long int NoOfHalfSpacesInNode;
+    long int NoOfPrunedBitStrings = 0;
+    long int NoOfZeroExtentBinStrings = 0;
+    long int NoOfDiscardedCells = 0;
+
+    for (itr = Leaves.begin(); itr != Leaves.end();)    // && NotFoundAllMinCells;)
+    {
+
+        //prune away leaf nodes that lie about hyperplane q_1+q2+...+q_d < 1;
+        float queryPlane[MAXDIM];
+        for (int i = 0; i < Dimen + 1; i++) queryPlane[i] = 1;
+        bool isValid = MbrIsValid(Dimen, queryPlane, (*itr).second->mbr, Comb);
+        if (!isValid) {
+            //cout << "Leaf node " << (*itr).second->NodeID << " is pruned!" << endl;
+            NoOfInvalidLeaves++;
+            ++itr;
+            continue;
+        }
+
+        NoOfCoveredHS = (*itr).first;
+        if (NoOfCoveredHS > minOrder)
+            break; //terminate searching min-cells, cause no cell with smaller order exists any more
+
+        NoOfIntersectedHS = 0;
+        NoOfIntersectedHS = ((*itr).second)->halfspaces.size();
+        if (NoOfIntersectedHS > 0)
+            nodesToIntersect.insert(std::pair<long int, QNode *>(NoOfIntersectedHS, (*itr).second));
+        else {
+            itr++;
+            continue;
+        }
+        itr1 = itr;
+        itr1++;
+        nodesToIntersect.clear();
+        while (true) {
+            if (itr1 == Leaves.end() || NoOfCoveredHS != (*itr1).first) break;
+
+            NoOfIntersectedHS = 0;
+            NoOfIntersectedHS = ((*itr1).second)->halfspaces.size();
+            if (NoOfIntersectedHS > 0)
+                nodesToIntersect.insert(std::pair<long int, QNode *>(NoOfIntersectedHS, (*itr1).second));
+            itr1++;
+        }
+        if (itr1 == Leaves.end()) break;
+        itr = itr1;
+
+        //cout << "Processing node " << itr1->second->NodeID << endl;
+
+        //perform in-node halfspace intersection for nodes sorting in ascending order according to the number of intersected halfspaces
+        //cout << "Size of nodesToIntersect: " << nodesToIntersect.size() << endl;
+        for (std::multimap<long, QNode *>::iterator itr1 = nodesToIntersect.begin();
+             itr1 != nodesToIntersect.end(); itr1++) {
+
+
+            NoOfHalfSpacesInNode = itr1->first;
+
+            NoOfNodesLeft--;
+            if (NoOfHalfSpacesInNode <= 1) continue;
+            //cout << "Number of nodes left to process :" << NoOfNodesLeft << endl;
+            //cout <<"examining node " << itr1->second->NodeID << ", #inter.HS:" << itr1->second->intersectedHalfspace->size() << endl;
+
+            //test compatibility of Hamming distance for each pair of halfspaces
+            std::multimap<int, string> InValidHammingStr;
+            long int idx1 = 0, idx2;
+            for (vector<long>::iterator sItr = (itr1->second->halfspaces).begin();
+                 sItr != (itr1->second->halfspaces).end(); sItr++) {
+                long int hs1 = (*sItr);
+                vector<long>::iterator sItr1;
+                sItr1 = sItr;
+                sItr1++;
+                idx2 = idx1 + 1;
+                for (; sItr1 != (itr1->second->halfspaces).end(); sItr1++) {
+                    long int hs2 = (*sItr1);
+                    testHalfspacePair(hs1, idx1, hs2, idx2, itr1->second->mbr, InValidHammingStr);
+                    idx2++;
+                }
+                idx1++;
+            }
+            /*    test output of the incompatible Halfspace pair
+            size_t substrPos1,substrPos2;
+            for (msItr=InValidHammingStr.begin();msItr!=InValidHammingStr.end();msItr++)
+            {
+                 cout << "Hamming Distance: " << msItr->first << ", String=" << msItr->second << endl;
+                 substrPos1=msItr->second.find("|");
+                 cout << msItr->second.substr(0,substrPos1) << " ";
+                 substrPos2=msItr->second.find("|",substrPos1+1);
+                 cout << msItr->second.substr(substrPos1+1,substrPos2-substrPos1-1) << " ";
+                 cout << msItr->second.substr(substrPos2+1) << endl;
+            }
+            //*/
+            //end of testing compatibility
+
+            //intersect the halfspaces in each leaf node
+            long int NoOfCombinations = (int) pow(2.0, NoOfHalfSpacesInNode);
+            std::multimap<int, vector<char> > binString;
+            long int HammingDistance = 0;
+            long int LoopCounter = 0;
+            bool stopIncrHammingDist = false;
+            long int HSidx1, HSidx2;
+            size_t substrPos1, substrPos2;
+            while ((HammingDistance <= NoOfHalfSpacesInNode) && !stopIncrHammingDist) {
+                //if (LoopCounter >= MAXNOBINSTRINGTOCHECK) break;
+                if (minOrder < INT_MAX && (HammingDistance + NoOfCoveredHS) > minOrder)
+                    break;
+
+                binString.clear();
+                GenLenNBinaryString(NoOfHalfSpacesInNode, HammingDistance, binString);  //generate all the combinations
+                std::multimap<int, vector<char> >::iterator itrHamming;
+                for (itrHamming = binString.begin(); itrHamming != binString.end(); itrHamming++) {
+                    LoopCounter++;
+                    if (LoopCounter >= MAXNOBINSTRINGTOCHECK) {
+                        std::cout << "Maximum loop limit exceeds!" << std::endl;
+                        stopIncrHammingDist = true;
+                        break;
+                    }
+
+                    NoOfBitStringsProcessed++;
+                    if (verbose)
+                        std::cout << "Testing Hamming string: "
+                             << string(itrHamming->second.begin(), itrHamming->second.end()) << std::endl;
+                    //Optimzed part Task 4: prune away Hamming String that contain incompatible halfspace pairs
+                    bool isValid = true;
+                    for (msItr = InValidHammingStr.begin(); msItr != InValidHammingStr.end(); msItr++) {
+                        //cout << "Hamming Distance: " << msItr->first << ", String=" << msItr->second << endl;
+                        substrPos1 = msItr->second.find("|");
+                        HSidx1 = atoi((msItr->second.substr(0, substrPos1)).c_str());
+                        substrPos2 = msItr->second.find("|", substrPos1 + 1);
+                        HSidx2 = atoi((msItr->second.substr(substrPos1 + 1, substrPos2 - substrPos1 - 1)).c_str());
+                        string tmpString = msItr->second.substr(substrPos2 + 1);
+                        if (itrHamming->second[HSidx1] == tmpString[0] && itrHamming->second[HSidx2] == tmpString[1]) {
+                            //cout << "String " << msItr->second << " matched pattern in " << msItr->second << endl;
+                            isValid = false;
+                            break;
+                        }
+                    }
+                    if (!isValid) {
+                        NoOfPrunedBitStrings++;
+                        if (verbose)
+                            std::cout << "Current testing Hamming string is invalid!" << std::endl;
+                        if (verbose)
+                            std::cout << "#pruned bit-strings: " << NoOfPrunedBitStrings << std::endl;
+
+                        continue;
+                    }
+                    //end of Optimized Task 4
+
+                    if (verbose)
+                        std::cout << "Mininmal Order=" << minOrder << std::endl;
+
+                    //prune current Hamming string if there exist two halfspaces that do not compatible
+                    if (HammingDistance != itrHamming->first) {
+                        if (verbose)
+                            std::cout << "Intersecting halfspaces with hamming distance = " << itrHamming->first << std::endl;
+                        HammingDistance = itrHamming->first;
+                    }
+
+                    //generate halfspaces for intersection based on hamming distance
+                    char tmpBuf[64];
+                    myitoa(itr1->second->nodeID, tmpBuf, 10);
+                    strcpy(halfspaceFileName, namePrefix);
+                    strcat(halfspaceFileName, tmpBuf);
+                    strcat(halfspaceFileName, "_");
+                    //strcat(halfspaceFileName,itrHamming->second);
+                    //string tmpStr=string(itrHamming->second.begin(),itrHamming->second.end());
+                    myitoa(rand(), tmpBuf, 10);
+                    strcat(halfspaceFileName, tmpBuf);
+                    strcat(halfspaceFileName, nameSuffix);
+                    //cout << "Hamming string will be written to " << halfspaceFileName << endl;
+
+                    bool nonZeroExtent = GenHammingHalfSpaces(halfspaceFileName, Dimen, itrHamming->second,
+                                                              itr1->second->halfspaces, itr1->second->mbr);
+                    if (nonZeroExtent == false) {
+                        //cout << "Discard Hamming binstring " << itrHamming->second << ", for zero-extent! " << endl;
+                        NoOfZeroExtentBinStrings++;
+                        continue;
+                    }
+
+                    //perform intersection for all the halfspaces inside the set 'intersected halfspaces' of a leaf node
+                    char sys_string[4096] = "bin\\qhalf Fp < ";
+                    strcat(sys_string, halfspaceFileName);
+                    strcat(sys_string, " | bin\\qconvex FA > ");
+                    strcat(sys_string, volumeFilename);
+                    system(sys_string);
+                    if (verbose)
+                        std::cout << "Command: " << sys_string << " performed..." << std::endl;
+
+                    //open the file to read the volumes of the intersection of the halfspaces
+                    std::ifstream fp_in(volumeFilename, std::ios::in);
+                    string fileLine, volText;
+                    size_t substrPos;
+                    if (verbose)
+                        std::cout << "Read and output cell volume:" << std::endl;
+                    while (getline(fp_in, fileLine)) {
+                        substrPos = fileLine.find("volume:");
+                        if (substrPos != std::string::npos)
+                            volText = fileLine.substr(substrPos + 7);
+                    }
+                    fp_in.close();
+
+                    float volume = atof(volText.c_str());
+                    if (verbose)
+                        std::cout << "Volume=" << volume << std::endl;
+
+                    string tmpString = halfspaceFileName;
+                    FilesToRemove.push_back(tmpString);  //collect the files for removal later
+
+                    if (volume > ZEROEXTENT)  //ZEROEXTENT: 1e-10
+                    {
+                        //store the min-cell found
+                        if (minOrder >= (HammingDistance + NoOfCoveredHS)) {
+                            minOrder = HammingDistance + NoOfCoveredHS;
+                            std::set<long int> tmpSet;
+                            std::copy((itr1->second->halfspaces).begin(),
+                                      (itr1->second->halfspaces).end(),
+                                      std::inserter(tmpSet, tmpSet.begin()));
+                            minCellHalfSpaces.push_back(tmpSet);
+                            vector<char> tmpVec = itrHamming->second;
+                            binaryString.push_back(tmpVec);
+                            if (verbose)
+                                std::cout << "Node: " << itr1->second->nodeID << ", found a min-cell with binstring:"
+                                     << string(itrHamming->second.begin(), itrHamming->second.end()) << std::endl;
+                        } else {
+                            NoOfDiscardedCells++;
+                            stopIncrHammingDist = true;
+                            string tmpString = halfspaceFileName;
+                            FilesToRemove.push_back(tmpString);//collect the files for removal later
+                            break;
+                        }
+                    } else {
+                        NoOfZeroExtentBinStrings++;
+                        if (verbose)
+                            std::cout << "Node: " << itr1->second->nodeID << ", HammingDist: " << HammingDistance
+                                 << " is empty!" << std::endl;
+                    }
+                    if (verbose)
+                        std::cout << "#min-cells found so far:" << minCellHalfSpaces.size() << std::endl;
+                }
+                if (!stopIncrHammingDist) HammingDistance++;
+                if (minOrder < INT_MAX && minOrder < (HammingDistance + NoOfCoveredHS))
+                    break;
+                else {
+                    if (verbose)
+                        std::cout << "Next, process bit-string with Hamming dist: " << HammingDistance << std::endl;
+                    //getchar();
+                }
+            }
+
+            if (FilesToRemove.size() >= 100) {
+                vector<string>::iterator vItr = FilesToRemove.begin();
+                while (!FilesToRemove.empty()) {
+                    remove((*vItr).c_str());  //delete the halfspace data file
+                    FilesToRemove.erase(vItr);
+                    vItr = FilesToRemove.begin();
+                }
+            }
+        }
+        //if (minCellHalfSpaces.size()>0) NotFoundAllMinCells=false;
+    }
+    vector<string>::iterator vItr = FilesToRemove.begin();
+    while (!FilesToRemove.empty()) {
+        remove((*vItr).c_str());  //delete the halfspace data file
+        FilesToRemove.erase(vItr);
+        vItr = FilesToRemove.begin();
+    }
+
+    if (verbose) std::cout << "Number of invalid leaf nodes = " << NoOfInvalidLeaves << std::endl;
+    if (verbose) std::cout << "#total bit-strings processed: " << NoOfBitStringsProcessed << std::endl;
+    if (verbose) std::cout << "#pruned bit-strings: " << NoOfPrunedBitStrings << std::endl;
+    if (verbose)
+        std::cout << "#min-Cells found: " << minCellHalfSpaces.size() << ", minOrder=" << minOrder + NoOfCoveredHS << std::endl;
+
+
+    if (minOrder == INT_MAX) return NoOfCoveredHS;
+    return minOrder + NoOfCoveredHS;
+}
+
