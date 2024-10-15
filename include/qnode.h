@@ -19,6 +19,7 @@ public:
     std::vector<std::pair<double, double>> mbr; // MBR rappresentato come vettore di coppie (min, max)
     bool norm;
     bool leaf;
+    int level;
     size_t order;
     std::vector<std::shared_ptr<HalfSpace>> covered;
     std::vector<std::shared_ptr<HalfSpace>> halfspaces;

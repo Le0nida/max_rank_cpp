@@ -10,11 +10,13 @@
 int normalizedMax = 1;
 int maxCapacity = 10; // Capacità massima del nodo
 int globalNodeID = 0;
+int maxLevel = 6;
 extern int numOfSubdivisions;
 
 QNode::QNode(QNode* parent, const std::vector<std::pair<double, double>>& mbr, int dims)
     : parent(parent), mbr(mbr), norm(true), leaf(true), order(0), dims(dims) {
     nodeID = globalNodeID++;
+    level = parent == nullptr ? 0 : parent->level + 1;
 }
 
 void QNode::setOrder() {
@@ -67,10 +69,10 @@ void QNode::appendHalfspace(const std::shared_ptr<HalfSpace>& hs) {
         if (isLeaf()) {
             halfspaces.push_back(hs);
 
-            if (halfspaces.size() > maxCapacity) {
+            if (halfspaces.size() > maxCapacity && level < maxLevel) {
                 splitNode();
                 for (const auto& oldHs : halfspaces) {
-                    for (auto& child : children) {
+                    for (const auto& child : children) {
                         if (child->norm) {
                             child->appendHalfspace(oldHs);
                         }
@@ -79,7 +81,7 @@ void QNode::appendHalfspace(const std::shared_ptr<HalfSpace>& hs) {
                 halfspaces.clear();
             }
         } else {
-            for (auto& child : children) {
+            for (const auto& child : children) {
                 if (child->norm) {
                     child->appendHalfspace(hs);
                 }
@@ -101,6 +103,7 @@ std::vector<std::shared_ptr<HalfSpace>> QNode::getTotalCovered() const {
 }
 
 void QNode::splitNode() {
+    ///if (level == maxLevel) return;
     if (!norm) return;
 
     auto subDivs = genSubdivisions();
