@@ -549,7 +549,7 @@ void GenBinaryString(long int len1, long int Max, std::multimap<int, vector<char
     return;
 }
 
-bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, const std::vector<std::pair<double, double>>& subDataSpace,
+bool testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, const std::vector<std::pair<double, double>>& subDataSpace,
                                  std::multimap<int, string> &InValidHammingStr) //test whether two halfspaces are compatible w.r.t Hamming distance 00,01,10,11
 {
 
@@ -666,7 +666,7 @@ bool Cell::testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, st
 }
 
 
-bool Cell::GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char> &HammingString,
+bool GenHammingHalfSpaces(char *OutFileName, const int Dimen, vector<char> &HammingString,
                                     std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, const std::vector<std::pair<double, double>>& subDataSpace) {
     int NoOfHyperplanes = 0;
     long int NoOfHalfSpaces = HalfSpaceIDs.size();
@@ -875,7 +875,7 @@ std::vector<string> readCombinations() {
     return Comb;
 }
 
-long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Leaves,
+long int optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Leaves,
                                                vector<std::set<std::shared_ptr<HalfSpace>> > &minCellHalfSpaces,
                                                vector<vector<char> > &binaryString) //optimization of within node intersection
 {

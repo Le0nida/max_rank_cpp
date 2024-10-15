@@ -45,15 +45,6 @@ public:
 
     [[nodiscard]] bool issingular() const;
 
-    bool testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, const std::vector<std::pair<double, double>>& subDataSpace,
-                                 std::multimap<int, std::string> &InValidHammingStr);
-
-    bool GenHammingHalfSpaces(char *OutFileName, const int Dimen, std::vector<char> &HammingString,
-                                    std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, const std::vector<std::pair<double, double>>& subDataSpace);
-
-    long int optimizedInNodeIntersection(std::vector<std::pair<long, QNode *> > &Leaves,
-                                               std::vector<std::set<std::shared_ptr<HalfSpace>> > &minCellHalfSpaces,
-                                               std::vector<std::vector<char> > &binaryString);
 
     int order;
     std::string mask;
@@ -73,5 +64,13 @@ void free_linprog_result(LinprogResult* result);
 // Funzioni per generare stringhe di Hamming e cercare minimi cell
 char** genhammingstrings(int strlen, int weight, int& numStrings);
 std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings);
+bool testHalfspacePair(std::shared_ptr<HalfSpace> HS1, long int IdxHS1, std::shared_ptr<HalfSpace> HS2, long int IdxHS2, const std::vector<std::pair<double, double>>& subDataSpace,
+                                 std::multimap<int, std::string> &InValidHammingStr);
 
+bool GenHammingHalfSpaces(char *OutFileName, const int Dimen, std::vector<char> &HammingString,
+                                std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, const std::vector<std::pair<double, double>>& subDataSpace);
+
+long int optimizedInNodeIntersection(std::vector<std::pair<long, QNode *> > &Leaves,
+                                               std::vector<std::set<std::shared_ptr<HalfSpace>> > &minCellHalfSpaces,
+                                               std::vector<std::vector<char> > &binaryString);
 #endif // CELL_H
