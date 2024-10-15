@@ -11,7 +11,7 @@
 #include <set>
 #include <utility>
 #include <fstream>
-#include <bits/random.h>
+#include <random>
 
 // Constructor for Interval class remains unchanged
 Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
@@ -876,7 +876,7 @@ std::vector<string> readCombinations() {
 }
 
 long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Leaves,
-                                               vector<std::set<long int> > &minCellHalfSpaces,
+                                               vector<std::set<std::shared_ptr<HalfSpace>> > &minCellHalfSpaces,
                                                vector<vector<char> > &binaryString) //optimization of within node intersection
 {
 
@@ -1138,7 +1138,7 @@ long int Cell::optimizedInNodeIntersection(vector<std::pair<long, QNode *> > &Le
                         //store the min-cell found
                         if (minOrder >= (HammingDistance + NoOfCoveredHS)) {
                             minOrder = HammingDistance + NoOfCoveredHS;
-                            std::set<long int> tmpSet;
+                            std::set<std::shared_ptr<HalfSpace>> tmpSet;
                             std::copy((itr1->second->halfspaces).begin(),
                                       (itr1->second->halfspaces).end(),
                                       std::inserter(tmpSet, tmpSet.begin()));

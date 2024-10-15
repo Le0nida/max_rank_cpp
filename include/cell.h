@@ -52,7 +52,7 @@ public:
                                     std::vector<std::shared_ptr<HalfSpace>> HalfSpaceIDs, const std::vector<std::pair<double, double>>& subDataSpace);
 
     long int optimizedInNodeIntersection(std::vector<std::pair<long, QNode *> > &Leaves,
-                                               std::vector<std::set<long int> > &minCellHalfSpaces,
+                                               std::vector<std::set<std::shared_ptr<HalfSpace>> > &minCellHalfSpaces,
                                                std::vector<std::vector<char> > &binaryString);
 
     int order;
