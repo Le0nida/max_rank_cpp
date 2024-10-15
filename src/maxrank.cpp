@@ -13,6 +13,7 @@
 #include <limits>
 #include <map>
 #include <unordered_set>
+#include "utils.h"
 
 int numOfSubdivisions = 0;
 std::unordered_set<long int> HalfSpaces;
@@ -38,11 +39,12 @@ std::pair<int, std::vector<std::shared_ptr<Cell>>> aa_hd(const std::vector<std::
         halfspacesToInsert.clear();
         halfspacesToInsert = genhalfspaces(p, new_sky);
 
+        printMemoryUsage("Before insertion");
         if (!halfspacesToInsert.empty()) {
             qt.inserthalfspaces(halfspacesToInsert);
             std::cout << "> " << halfspacesToInsert.size() << " halfspace(s) have been inserted" << std::endl;
         }
-
+        printMemoryUsage("After insertion");
         leaves = qt.getleaves();
 
         for (const auto& leaf : leaves) {
@@ -120,6 +122,7 @@ std::pair<int, std::vector<std::shared_ptr<Cell>>> aa_hd(const std::vector<std::
         }
 
         if (to_expand.empty()) {
+            printMemoryUsage();
             return {static_cast<int>(dominators.size()) + minorder_singular + 1, std::move(mincells_singular)};
         }
 

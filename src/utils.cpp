@@ -17,10 +17,14 @@ size_t getAvailableMemory() {
     return static_cast<size_t>(status.ullAvailPhys);
 }
 
-void printMemoryUsage() {
+void printMemoryUsage(const std::string& descr) {
     PROCESS_MEMORY_COUNTERS memInfo;
     if (GetProcessMemoryInfo(GetCurrentProcess(), &memInfo, sizeof(memInfo))) {
-        SIZE_T virtualMemUsedByMe = memInfo.WorkingSetSize;
+        const SIZE_T virtualMemUsedByMe = memInfo.WorkingSetSize;
+        if (!descr.empty())
+        {
+            std::cout << descr << " - ";
+        }
         std::cout << "Memory Usage (WorkingSetSize): " << virtualMemUsedByMe / (1024 * 1024) << " MB" << std::endl;
     } else {
         std::cerr << "Failed to get memory info" << std::endl;

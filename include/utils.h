@@ -7,8 +7,9 @@
 
 
 #include <cstddef>
+#include <string>
 
 size_t getAvailableMemory();
-void printMemoryUsage();
+void printMemoryUsage(const std::string& descr = "");
 
 #endif //UTILS_H
