@@ -4,14 +4,27 @@
 
 #include "utils.h"
 
+#include <iostream>
+
 #if defined(_WIN32)
 #include <windows.h>
+#include <psapi.h>
 
 size_t getAvailableMemory() {
     MEMORYSTATUSEX status;
     status.dwLength = sizeof(status);
     GlobalMemoryStatusEx(&status);
     return static_cast<size_t>(status.ullAvailPhys);
+}
+
+void printMemoryUsage() {
+    PROCESS_MEMORY_COUNTERS memInfo;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &memInfo, sizeof(memInfo))) {
+        SIZE_T virtualMemUsedByMe = memInfo.WorkingSetSize;
+        std::cout << "Memory Usage (WorkingSetSize): " << virtualMemUsedByMe / (1024 * 1024) << " MB" << std::endl;
+    } else {
+        std::cerr << "Failed to get memory info" << std::endl;
+    }
 }
 
 #elif defined(__linux__)

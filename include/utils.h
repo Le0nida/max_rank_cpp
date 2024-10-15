@@ -9,5 +9,6 @@
 #include <cstddef>
 
 size_t getAvailableMemory();
+void printMemoryUsage();
 
 #endif //UTILS_H
