@@ -7,8 +7,11 @@
 #include <bitset>
 #include <cstdlib>   // Per malloc, free
 #include <src/Highs.h>
-#include <limits>
+#include <fstream>
 #include <utility>
+
+// Definizione di ZEROEXTENT per la soglia del volume
+#define ZEROEXTENT 1e-15
 
 // Constructor for Interval class remains unchanged
 Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
@@ -305,109 +308,193 @@ char** genhammingstrings(int strlen, int weight, int& numStrings) {
     return hamming_strings;
 }
 
-// Funzione per cercare i minimi cell tramite programmazione lineare
+// Funzione per generare il file dei halfspace basato sulla stringa di Hamming
+bool generateHalfspaceFile(const char* fileName, const QNode& leaf, const char* hamstr, int dims) {
+    FILE* fout = fopen(fileName, "w");
+    if (fout == NULL) {
+        std::cout << "Errore nell'apertura del file " << fileName << std::endl;
+        return false;
+    }
+
+    // Generazione di un punto fattibile (ad esempio, il centro dell'MBR)
+    std::vector<std::pair<double, double>> mbr = leaf.mbr;
+    std::vector<double> feasible_coords(dims);
+    for (int i = 0; i < dims; ++i) {
+        feasible_coords[i] = (mbr[i].first + mbr[i].second) / 2.0;
+    }
+
+    // Scrittura dell'intestazione del file
+    fprintf(fout, "%d 1\n", dims); // Dimensionalità
+    for (int i = 0; i < dims; ++i)
+        fprintf(fout, "%f ", feasible_coords[i]); // Punto fattibile
+    fprintf(fout, "\n");
+    fprintf(fout, "%d\n", dims + 1);
+
+    // Numero totale di iperpiani: 2*dims (limiti dell'MBR) + numero di halfspace
+    int numHyperplanes = 2 * dims + leaf.halfspaces.size();
+    fprintf(fout, "%d\n", numHyperplanes);
+
+    // Scrittura degli iperpiani limitanti (l'MBR del nodo foglia)
+    for (int i = 0; i < dims; ++i) {
+        // Limite inferiore: x_i >= mbr[i].first
+        for (int j = 0; j < dims; ++j)
+            fprintf(fout, "%d ", (i == j) ? 1 : 0);
+        fprintf(fout, "%f\n", -mbr[i].first);
+
+        // Limite superiore: x_i <= mbr[i].second
+        for (int j = 0; j < dims; ++j)
+            fprintf(fout, "%d ", (i == j) ? -1 : 0);
+        fprintf(fout, "%f\n", mbr[i].second);
+    }
+
+    // Scrittura dei halfspace basati sulla stringa di Hamming
+    int index = 0;
+    for (const auto& hsPtr : leaf.halfspaces) {
+        auto hs = hsPtr;
+        if (hamstr[index] == '0') {
+            // Utilizza il halfspace così com'è
+            for (int i = 0; i < dims; ++i)
+                fprintf(fout, "%f ", hs->coeff[i]);
+            fprintf(fout, "%f\n", -hs->known);
+        } else if (hamstr[index] == '1') {
+            // Utilizza il halfspace opposto
+            for (int i = 0; i < dims; ++i)
+                fprintf(fout, "%f ", -hs->coeff[i]);
+            fprintf(fout, "%f\n", hs->known);
+        }
+        index++;
+    }
+
+    fclose(fout);
+    return true;
+}
+
+// Funzione per leggere il volume dal file di output generato da qconvex
+double readVolumeFromFile(const char* volumeFileName) {
+    std::ifstream inFile(volumeFileName);
+    if (!inFile.is_open()) {
+        std::cout << "Errore nell'apertura del file del volume " << volumeFileName << std::endl;
+        return 0.0;
+    }
+
+    std::string line;
+    double volume = 0.0;
+    while (std::getline(inFile, line)) {
+        size_t pos = line.find("volume:");
+        if (pos != std::string::npos) {
+            std::string volStr = line.substr(pos + 7);
+            volume = atof(volStr.c_str());
+            break;
+        }
+    }
+    inFile.close();
+    return volume;
+}
+
+// Funzione per cercare le min-cells utilizzando qhalf e qconvex
 std::vector<std::shared_ptr<Cell>> searchmincells_lp(const QNode& leaf, char** hamstrings, int numHamstrings) {
     int dims = leaf.dims;
     std::vector<std::shared_ptr<Cell>> cells;
 
-    auto leaf_covered = leaf.getTotalCovered();
+    // Debug: stampa le informazioni generali sul nodo foglia
+    std::cout << "Inizio ricerca min-cells per nodo foglia con " << dims << " dimensioni e " << leaf.halfspaces.size() << " halfspaces." << std::endl;
 
+    auto leaf_covered = leaf.getTotalCovered();
     size_t numHalfspaces = leaf.halfspaces.size();
+
     if (numHalfspaces == 0) {
+        // Nessun halfspace da considerare, crea una cella che copre l'MBR del nodo
         std::vector<std::pair<double, double>> mbr = leaf.mbr;
         std::vector<double> feasible_coords(dims);
         for (int i = 0; i < dims; ++i) {
             feasible_coords[i] = (mbr[i].first + mbr[i].second) / 2.0;
         }
         Point feasible_pnt(feasible_coords, dims);
+        std::cout << "Nessun halfspace, crea cella che copre l'MBR del nodo." << std::endl;
         cells.push_back(std::make_shared<Cell>(0, "", leaf_covered, std::vector<std::shared_ptr<HalfSpace>>{}, leaf.mbr, dims, feasible_pnt));
         return cells;
     }
 
-    // Configurazione della funzione obiettivo
-    int num_vars = dims + 1;
-    double* c = (double*)calloc(num_vars, sizeof(double));
-    c[dims] = -1.0;
+    // Percorsi per i file temporanei
+    char halfspaceFileName[256];
+    char volumeFileName[256];
 
-    // Configurazione dei bounds
-    double* bounds = (double*)malloc(2 * num_vars * sizeof(double));
-    for (int d = 0; d < dims; ++d) {
-        bounds[2 * d] = leaf.mbr[d].first;
-        bounds[2 * d + 1] = leaf.mbr[d].second;
-    }
-    bounds[2 * dims] = 0.0; // Limite inferiore per la variabile slack
-    bounds[2 * dims + 1] = kHighsInf; // Limite superiore per la variabile slack
-
-    // Definizione del numero di vincoli
-    int num_constraints = numHalfspaces + 1;
-
-    // Alloca memoria per A_ub e b_ub (ma non inizializzarli qui)
-    double* A_ub = (double*)malloc(num_constraints * num_vars * sizeof(double));
-    double* b_ub = (double*)malloc(num_constraints * sizeof(double));
-
+    // Per ogni stringa di Hamming
     for (int h = 0; h < numHamstrings; ++h) {
         char* hamstr = hamstrings[h];
 
-        // **Re-inizializza A_ub e b_ub per ogni hamstr**
-        // Inizializzazione di A_ub e b_ub
-        for (int i = 0; i < num_constraints; ++i) {
-            for (int j = 0; j < num_vars; ++j) {
-                A_ub[i * num_vars + j] = 0.0;
-            }
-            b_ub[i] = 0.0; // Assicurati di inizializzare b_ub
-        }
-        // Ultima riga di A_ub (somma delle variabili <= 1)
-        for (int j = 0; j < dims; ++j) {
-            A_ub[numHalfspaces * num_vars + j] = 1.0;
-        }
-        A_ub[numHalfspaces * num_vars + dims] = 0.0;
-        b_ub[numHalfspaces] = 1.0;
+        // Genera nomi di file univoci
+        sprintf(halfspaceFileName, "halfspace_%d_%d.txt", rand(), h);
+        sprintf(volumeFileName, "volume_%d_%d.txt", rand(), h);
 
-        for (int b = 0; b < numHalfspaces; ++b) {
-            auto hs = leaf.halfspaces[b];
-            if (hamstr[b] == '0') {
-                for (int i = 0; i < dims; ++i) {
-                    A_ub[b * num_vars + i] = -hs->coeff[i];
-                }
-                A_ub[b * num_vars + dims] = 1.0; // **Corretto il segno**
-                b_ub[b] = -hs->known;
-            } else {
-                for (int i = 0; i < dims; ++i) {
-                    A_ub[b * num_vars + i] = hs->coeff[i];
-                }
-                A_ub[b * num_vars + dims] = 1.0; // **Corretto il segno**
-                b_ub[b] = hs->known;
-            }
+        // Debug: stampa la stringa di Hamming corrente
+        std::cout << "Processing Hamming string #" << h + 1 << ": " << hamstr << std::endl;
+
+        // Genera il file dei halfspace basato sulla stringa di Hamming
+        bool success = generateHalfspaceFile(halfspaceFileName, leaf, hamstr, dims);
+        if (!success) {
+            // Impossibile generare il file dei halfspace, passa alla prossima stringa di Hamming
+            std::cout << "Errore nella generazione del file dei halfspaces per la stringa di Hamming #" << h + 1 << std::endl;
+            continue;
         }
 
-        // Risolvi il problema di programmazione lineare
-        LinprogResult* result = linprog_highs(c, A_ub, b_ub, bounds, num_vars, num_constraints);
+        // Debug: stampa il nome del file halfspace generato
+        std::cout << "Generato file halfspace: " << halfspaceFileName << std::endl;
 
-        if (result->status == static_cast<int>(HighsModelStatus::kOptimal)) {
-            // Soluzione trovata
-            double* solution = result->x;
-            std::vector<double> feasible_coords;
-            feasible_coords.reserve(dims);
+        // Esegue qhalf e qconvex per calcolare il volume
+        char command[512];
+        sprintf(command, R"(C:\Users\leona\Documents\Projects\max_rank_cpp\bin\qhalf.exe Fp < %s | C:\Users\leona\Documents\Projects\max_rank_cpp\bin\qconvex FA > %s)", halfspaceFileName, volumeFileName);
+        int systemResult = system(command);
+
+        // Debug: stampa il comando eseguito
+        std::cout << "Eseguito comando: " << command << std::endl;
+
+        if (systemResult != 0) {
+            // Errore nell'esecuzione di qhalf/qconvex
+            std::cout << "Errore nell'esecuzione di qhalf/qconvex per la stringa di Hamming #" << h + 1 << std::endl;
+            // Rimuove i file temporanei
+            remove(halfspaceFileName);
+            remove(volumeFileName);
+            continue;
+        }
+
+        // Legge il volume dal file di output
+        double volume = readVolumeFromFile(volumeFileName);
+
+        // Debug: stampa il volume calcolato
+        std::cout << "Volume calcolato per la stringa di Hamming #" << h + 1 << ": " << volume << std::endl;
+
+        if (volume > ZEROEXTENT) {
+            // Trovata una min-cell valida
+            std::cout << "Min-cell valida trovata per la stringa di Hamming #" << h + 1 << std::endl;
+
+            // Crea un punto fattibile (ad esempio, il centro dell'MBR del nodo)
+            std::vector<std::pair<double, double>> mbr = leaf.mbr;
+            std::vector<double> feasible_coords(dims);
             for (int i = 0; i < dims; ++i) {
-                feasible_coords[i] = solution[i];
+                feasible_coords[i] = (mbr[i].first + mbr[i].second) / 2.0;
             }
             Point feasible_pnt(feasible_coords, dims);
 
-            // Crea un nuovo Cell e aggiungilo alla lista
+            // Crea una nuova Cell e aggiungila alla lista
             cells.push_back(std::make_shared<Cell>(0, hamstr, leaf_covered, leaf.halfspaces, leaf.mbr, dims, feasible_pnt));
 
-            free_linprog_result(result);
-            break; // Esci dal loop poiché hai trovato una soluzione
+            // Rimuove i file temporanei
+            remove(halfspaceFileName);
+            remove(volumeFileName);
+
+            // Debug: conferma la min-cell trovata e il loop che si interrompe
+            std::cout << "Min-cell trovata, interruzione del ciclo." << std::endl;
+            break; // Esci dal loop poiché hai trovato una min-cell valida
         }
 
-        free_linprog_result(result);
-    }
+        // Debug: stampa se la min-cell trovata ha un volume nullo o è stata scartata
+        std::cout << "Nessuna min-cell valida trovata per la stringa di Hamming #" << h + 1 << " (volume nullo)." << std::endl;
 
-    // Dealloca la memoria
-    free(c);
-    free(bounds);
-    free(A_ub);
-    free(b_ub);
+        // Rimuove i file temporanei
+        remove(halfspaceFileName);
+        remove(volumeFileName);
+    }
 
     return cells;
 }
