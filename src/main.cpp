@@ -15,6 +15,7 @@
 #include "qtree.h"
 #include "query.h"
 #include "cell.h"
+#include <chrono>
 
 using namespace std;
 
@@ -111,10 +112,13 @@ void writeCSV(const std::string& filename, const std::vector<std::vector<double>
 }
 
 int main(int argc, char* argv[]) {
+    auto start = std::chrono::high_resolution_clock::now();
+
     if (argc < 4) {
         cerr << "Usage: " << argv[0] << " <datafile> <queryfile> <method>" << endl;
         return 1;
     }
+
 
     string datafile = argv[1];
     string queryfile = argv[2];
@@ -184,5 +188,8 @@ int main(int argc, char* argv[]) {
     writeCSV(R"(C:\Users\leona\Desktop\maxrank.csv)", res, { "id", "maxrank" });
     writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, { "id", "query_found" });
 
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    cout << "Total execution time: " << elapsed.count() << " seconds." << endl;
     return 0;
 }
