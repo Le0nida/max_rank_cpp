@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <string.h>
 
 int numOfSubdivisions = 0;
 
@@ -18,10 +19,76 @@ int numOfSubdivisions = 0;
 HalfSpaceCache* halfspaceCache = nullptr;
 std::unordered_map<Point, long, PointHash> pointToHalfSpaceCache;
 
-std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
+std::vector<std::string> readCombinations(const int& dims) {
+    std::vector<std::string> comb;
+    FILE *fp;
+    char *token;
+    char m_separator[] = " \n\t";
+    char buf[512];
+    std::string FileName[] = {"../bin/Comb2D.txt", "../bin/Comb3D.txt", "../bin/Comb4D.txt", "../bin/Comb5D.txt", "../bin/Comb6D.txt", "../bin/Comb7D.txt",
+                         "../bin/Comb8D.txt", "../bin/Comb9D.txt"};
+    std::string strComb;
+    fp = fopen(FileName[dims - 2].c_str(), "r");
+    if (fp == NULL) {
+        std::cout << "error in fileopen!" << std::endl;
+        exit(0);
+    }
+    fgets(buf, 512, fp);
+    if (atoi(buf) != dims) {
+        std::cout << "Error! Dimensions are not equal!" << std::endl;
+        exit(0);
+    }
+    while (fgets(buf, 512, fp) != NULL) {
+        token = strtok(buf, m_separator);
+        //while (token != NULL){
+        //	token = strtok(NULL,m_separator);
+        //}
+        std::string strComb = token;
+        comb.push_back(strComb);
+    }
+    fclose(fp);
+    return comb;
+}
+bool MbrIsValid(const int &Dimen, const float hs[], const std::vector<std::array<double, 2>> &mbr,
+                const std::vector<std::string> &Comb) {
+    int numAbove = 0;
+    int numBelow = 0;
+    long int numOfVertices = Comb.size();
 
-    numOfSubdivisions = (int) pow(2.0, p.dims - 1);
-    QTree qt(p.dims - 1, 10);
+    // Usa un array statico per coord invece di ricostruirlo dinamicamente ogni volta
+    std::vector<double> coord(Dimen, 0.0);
+
+    for (const auto &combination : Comb) {
+        float sum = 0.0; // Calcola sum durante la costruzione di coord
+        for (int j = 0; j < Dimen; ++j) {
+            coord[j] = (combination[j] == '0') ? mbr[j][0] : mbr[j][1];
+            sum += coord[j];
+        }
+
+        // Confronta sum con hs[Dimen]
+        if (sum > hs[Dimen]) {
+            ++numAbove;
+            if (numAbove > 0 && numBelow > 0) break; // Early exit: l'MBR è intersecato
+        } else if (sum < hs[Dimen]) {
+            ++numBelow;
+            if (numAbove > 0 && numBelow > 0) break; // Early exit: l'MBR è intersecato
+        }
+    }
+
+    // Restituisci il risultato in base ai conteggi
+    if (numAbove == numOfVertices) return false;
+    if (numBelow == numOfVertices) return true;
+    return false;
+}
+
+std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
+    const int dims = static_cast<int>(p.dims - 1);
+    numOfSubdivisions = (int) pow(2.0, dims);
+    std::vector<std::string> comb = readCombinations(dims);
+    float queryPlane[dims];
+    for (int i = 0; i < dims + 1; i++) queryPlane[i] = 1;
+
+    QTree qt(dims, 10);
     std::vector<Point> dominators = getdominators(data, p);
     std::vector<Point> incomp = getincomparables(data, p);
 
@@ -79,6 +146,11 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             int leaf_order = static_cast<int>(leaf->getOrder());
             if (leaf_order > minorder || leaf_order > minorder_singular) {
                 break;
+            }
+            //prune away leaf nodes that lie about hyperplane q_1+q2+...+q_d < 1;
+            if (!MbrIsValid(dims, queryPlane, leaf->getMBR(), comb)) {
+                //std::cout << "Leaf node " << leaf->getNodeID() << " is pruned!" << std::endl;
+                continue;
             }
 
             int hamweight = 0;
