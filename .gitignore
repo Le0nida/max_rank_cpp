@@ -45,3 +45,4 @@ CMakeSettings.json
 /maxrank_leveldb
 /maxrank_release_mmfiles
 /maxrank_normal
+/cmake-build-relwithdebinfo
