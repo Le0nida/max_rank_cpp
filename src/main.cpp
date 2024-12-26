@@ -20,7 +20,7 @@
 using namespace std;
 
 class Cell;
-vector<Point> readCSV(const string& filename) {
+vector<Point> readCSV(const string& filename, int numRecords, int dimensions) {
     ifstream file(filename);
     vector<Point> data;
     string line, word;
@@ -31,12 +31,12 @@ vector<Point> readCSV(const string& filename) {
     }
 
     // Skip the header line
-    if (getline(file, line)) {
-        // Successfully read the header line, do nothing
-    } else {
-        // Failed to read the header line, possibly empty file
+    if (!getline(file, line)) {
         throw runtime_error("Empty or invalid file: " + filename);
     }
+
+    // Preallocate memory for data
+    data.reserve(numRecords);
 
     while (getline(file, line)) {
         stringstream ss(line);
@@ -61,22 +61,40 @@ vector<Point> readCSV(const string& filename) {
             }
         }
 
-        if (id != -1 && !row.empty()) {
+        if (id != -1 && row.size() == dimensions) {
             data.emplace_back(row, id);
+        } else {
+            throw runtime_error("Row does not match expected dimensions: " + line);
         }
     }
 
     return data;
 }
 
-vector<int> readQuery(const string& filename) {
+vector<int> readQuery(const string& filename, int numQueries) {
     ifstream file(filename);
     vector<int> query;
     string line;
 
+    // Preallocate memory for queries
+    query.reserve(numQueries);
+
     while (getline(file, line)) {
-        query.push_back(stoi(line));
+        try {
+            query.push_back(stoi(line));
+        } catch (const invalid_argument& e) {
+            cerr << "Invalid argument in query file: " << line << endl;
+            throw;
+        } catch (const out_of_range& e) {
+            cerr << "Out of range in query file: " << line << endl;
+            throw;
+        }
     }
+
+    if (query.size() != numQueries) {
+        throw runtime_error("Query file does not contain the expected number of queries.");
+    }
+
     return query;
 }
 
@@ -114,27 +132,48 @@ void writeCSV(const std::string& filename, const std::vector<std::vector<double>
 int main(int argc, char* argv[]) {
     auto start = std::chrono::high_resolution_clock::now();
 
-    if (argc < 4) {
-        cerr << "Usage: " << argv[0] << " <datafile> <queryfile> <method>" << endl;
+    if (argc < 6) {
+        cerr << "Usage: " << argv[0] << " <datafile> <numRecords> <dimensions> <numQueries> <queryfile> <method>" << endl;
         return 1;
     }
 
-
     string datafile = argv[1];
-    string queryfile = argv[2];
-    string method = argv[3];
+    int numRecords;
+    int dimensions;
+    int numQueries;
+    string queryfile = argv[5];
+    string method = argv[6];
+
+
+    try {
+        numRecords = stoi(argv[2]);
+        dimensions = stoi(argv[3]);
+        numQueries = stoi(argv[4]);
+
+        if (numRecords <= 0 || dimensions <= 0 || numQueries <= 0) {
+            throw invalid_argument("Input numbers must be positive integers.");
+        }
+    } catch (const invalid_argument& e) {
+        cerr << "Invalid input: " << e.what() << endl;
+        return 1;
+    } catch (const out_of_range& e) {
+        cerr << "Input number out of range: " << e.what() << endl;
+        return 1;
+    }
 
     // Load data
-    vector<Point> data = readCSV(datafile);
+    vector<Point> data = readCSV(datafile, numRecords, dimensions);
     cout << "Loaded " << data.size() << " records from " << datafile << endl;
 
     // Load query
-    auto query = readQuery(queryfile);
+    vector<int> query = readQuery(queryfile, numQueries);
     cout << "Loaded " << query.size() << " queries from " << queryfile << endl;
 
     // Main MaxRank routine
     vector<vector<double>> res;
+    res.reserve(query.size());
     vector<vector<double>> cells;
+    cells.reserve(query.size());
 
     if (data[0].dims > 2) {
         for (int q : query) {
