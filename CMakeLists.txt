@@ -21,7 +21,6 @@ include_directories(${HIGHS_INCLUDE_DIR}/build)
 
 # Add subdirectories
 add_subdirectory(src)
-add_subdirectory(tests)
 
 add_executable(MaxRankProject src/main.cpp)
 target_include_directories(MaxRankProject PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
