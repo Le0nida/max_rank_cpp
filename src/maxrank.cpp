@@ -122,9 +122,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         auto new_leaves = qt.getLeaves();
         qt.updateAllOrders();
 
-        new_leaves.sort([](QNode* a, QNode* b) {
-            return a->getOrder() < b->getOrder();
-        });
+        std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->getOrder() < b->getOrder(); });
 
         return std::make_pair(new_sky, new_leaves);
 

@@ -2,70 +2,35 @@
 #include "qnode.h"
 #include "geom.h"
 #include "halfspace.h"
-#include <numeric>
 #include <iostream>
+#include <queue>
 
-// Dichiarazione esterna: quante partizioni si generano in splitNode()
-// (es. se dims=2, numOfSubdivisions=4; se dims=3, numOfSubdivisions=8; etc.)
-
+extern int numOfSubdivisions;
 
 QTree::QTree(int dims, int maxhsnode)
     : dims(dims), maxhsnode(maxhsnode), root(nullptr)
 {
-    // Calcoliamo 2^dims
-    numOfSubdivisions = (1 << dims);
-
-    // Creiamo la radice
+    numOfSubdivisions = (1 << dims); // 2^dims
     root = createroot();
 }
 
 QTree::~QTree() {
-    // Distruggiamo tutta la gerarchia, cominciando dalla radice
-    // (il distruttore di QNode farà il delete ricorsivo dei figli).
-    if (root) delete root;
+    // Distruzione dell’intero albero in modo NON ricorsivo
+    destroyAllNodes();
     root = nullptr;
 }
 
-// Creazione della radice e suo eventuale primo split
+// Creazione radice
 QNode* QTree::createroot() {
     // MBR [0,1]^dims
-    std::vector<std::array<double, 2>> mbr(dims, {0.0, 1.0});
-
-    // Crea QNode radice (parent=nullptr, isLeaf=true di default)
+    std::vector<std::array<double,2>> mbr(dims, {0.0, 1.0});
     QNode* r = new QNode(this, nullptr, mbr);
     return r;
 }
 
-// Inserisce i nuovi halfspaces (bypassando i costruttori di vector temporanei)
-void QTree::inserthalfspaces(const std::vector<long int>& halfspaces) {
-    if (halfspaces.empty()) return;
-    // Radice fa la insert
-    root->insertHalfspaces(halfspaces);
-}
-
-// Registra un nuovo nodo foglia
-void QTree::registerLeaf(QNode* leaf) {
-    // Aggiunge in coda alla lista
-    leaf->leafIterator = leaves.insert(leaves.end(), leaf);
-}
-
-// Deregistra un nodo che non è più foglia
-void QTree::unregisterLeaf(QNode* leaf) {
-    // Rimozione O(1) tramite l'iteratore salvato
-    if (leaf->leafIterator != leaves.end()) {
-        leaves.erase(leaf->leafIterator);
-        leaf->leafIterator = leaves.end();
-    }
-}
-
-// Aggiorna l'ordine di tutti i nodi in BFS, evitando copie di vettori
-void QTree::updateAllOrders() {
+void QTree::destroyAllNodes() {
     if (!root) return;
-
-    // Inizializziamo l'ordine del root come la dimensione di covered
-    root->setOrder(root->covered.size());
-
-    // BFS con coda
+    // Visita BFS (o DFS) di tutti i nodi, e poi delete
     std::queue<QNode*> Q;
     Q.push(root);
 
@@ -73,15 +38,62 @@ void QTree::updateAllOrders() {
         QNode* current = Q.front();
         Q.pop();
 
-        // Per ogni figlio
-        if (current->children)
-        {
-            for (int i = 0; i < numOfSubdivisions; ++i) {
-                QNode* child = current->children[i];
-                if (!child) continue;
+        // Accodiamo i figli (se esistono)
+        for (auto child : current->children) {
+            if (child) {
+                Q.push(child);
+            }
+        }
+        // Eliminiamo il nodo
+        delete current;
+    }
+    // Svuotiamo anche il vettore leaves
+    leaves.clear();
+}
 
-                // L'ordine del figlio = ordine del padre + # covered locali del figlio
-                child->setOrder(current->getOrder() + child->covered.size());
+void QTree::inserthalfspaces(const std::vector<long int>& halfspaces) {
+    if (halfspaces.empty() || !root) return;
+    root->insertHalfspaces(halfspaces);
+}
+
+void QTree::registerLeaf(QNode* leaf) {
+    // Inserimento in coda
+    leaves.push_back(leaf);
+    leaf->leafIndex = (int)leaves.size() - 1;
+}
+
+void QTree::unregisterLeaf(QNode* leaf) {
+    // Rimozione O(1) tramite swap con l’ultimo e pop_back
+    int idx = leaf->leafIndex;
+    if (idx >= 0 && idx < (int)leaves.size()) {
+        // se leaf non è già l’ultimo, scambiamo
+        if (idx != (int)leaves.size()-1) {
+            std::swap(leaves[idx], leaves.back());
+            // Aggiorniamo l’indice della foglia che era in fondo
+            leaves[idx]->leafIndex = idx;
+        }
+        leaves.pop_back();
+        leaf->leafIndex = -1;
+    }
+}
+
+void QTree::updateAllOrders() {
+    if (!root) return;
+
+    root->setOrder(root->covered.size());
+
+    std::queue<QNode*> Q;
+    Q.push(root);
+
+    while (!Q.empty()) {
+        QNode* current = Q.front();
+        Q.pop();
+
+        // figli
+        for (auto child : current->children) {
+            if (child) {
+                size_t newOrder = current->getOrder() + child->covered.size();
+                child->setOrder(newOrder);
                 Q.push(child);
             }
         }
