@@ -1,7 +1,3 @@
-//
-// Created by leona on 01/08/2024.
-//
-
 #ifndef QTREE_H
 #define QTREE_H
 
@@ -9,23 +5,48 @@
 #include "halfspace.h"
 #include <vector>
 #include <array>
-#include <unordered_set>
+#include <list>
+#include <queue>
+
+// Numero di partizioni in splitNode() = 2^dims (es. in un octree 2^3=8).
+extern int numOfSubdivisions;
 
 class QTree {
 public:
     QTree(int dims, int maxhsnode);
+    ~QTree();
 
+    // Inserisce un batch di halfspaces nella radice (e ricorsivamente nei figli)
     void inserthalfspaces(const std::vector<long int>& halfspaces);
-    std::vector<QNode*> getleaves();
+
+    // Restituisce la lista delle foglie aggiornata in O(1)
+    std::list<QNode*> getLeaves() const { return leaves; }
+
+    // Metodi per gestire la registrazione/deregistrazione di un nodo-foglia
+    void registerLeaf(QNode* leaf);
+    void unregisterLeaf(QNode* leaf);
+
+    // Funzione per aggiornare l'ordine di tutti i nodi in BFS
+    void updateAllOrders();
+
+    // Getter sul root
+    QNode* getRoot() const { return root; }
+
+    // Parametri
+    int getDims() const { return dims; }
+    int getMaxHSNode() const { return maxhsnode; }
 
 private:
-    int dims;  // Dimensionality of the space wrapped by the tree
-    int maxhsnode;  // Maximum number of halfspaces a node can contain before being split up
-    std::array<std::vector<std::vector<double>>, 2> masks;  // Masks used in halfspace insertion
-    QNode* root;  // Reference to root node
-
     QNode* createroot();
+
+    int dims;       // Dimensioni dello spazio
+    int maxhsnode;  // Capacità massima halfspaces in un nodo
+
+    // Radice dell'albero
+    QNode* root;
+
+    // Lista aggiornata in tempo reale di foglie
+    std::list<QNode*> leaves;
 };
 
 #endif // QTREE_H
-

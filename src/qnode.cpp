@@ -1,29 +1,46 @@
-//
-// Created by leona on 01/08/2024.
-//
 #include "qnode.h"
-
-#include <cmath>
-#include <iostream>
-#include <fstream>
-#include <cstring>
-#include <numeric>
-#include "geom.h"
 #include "qtree.h"
+#include "geom.h"
+#include <algorithm>
+#include <iostream>
+#include <queue>
+
+// Valore di riferimento per la checkNodeValidity()
+static int normalizedMax = 1;
+// Capacità massima del nodo, al superamento si fa split
+static int maxCapacity = 10;
 
 extern int numOfSubdivisions;
-int normalizedMax = 1;
-int maxCapacity = 10; // Capacità massima del nodo
 
-// Contatore globale per assegnare ID unici
-int globalNodeID = 0;
+// Contatore globale per ID (se necessario)
+static int globalNodeID = 0;
 
-// Costruttore di QNode
-QNode::QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr)
-    : nodeID(globalNodeID++), parent(parent), mbr(mbr), norm(true), leaf(true), order(0), children(nullptr) {}
+// Costruttore: registra immediatamente il nodo come foglia
+QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double, 2>>& mbr)
+  : owner(owner),
+    parent(parent),
+    mbr(mbr),
+    norm(true),
+    leaf(true),
+    order(0)
+{
+    // Alloca i figli
+    children = nullptr;
+    if (owner) {
+        // Ci registriamo come foglia presso l'albero
+        owner->registerLeaf(this);
+    }
+    // Se la dimensione halfspaces del nodo dovesse superare maxCapacity,
+    // eseguiamo splitNode() dinamicamente in insertHalfspace().
+}
 
+// Distruttore ricorsivo
 QNode::~QNode() {
-    // Dealloca i nodi figli ricorsivamente
+    // Se è foglia, deregistra dalla lista delle foglie
+    if (leaf && owner) {
+        owner->unregisterLeaf(this);
+    }
+    // Dealloca i figli
     if (children) {
         for (int i = 0; i < numOfSubdivisions; ++i) {
             if (children[i]) {
@@ -35,66 +52,39 @@ QNode::~QNode() {
     }
 }
 
-// Verifica se il nodo è la radice
-bool QNode::isRoot() const {
-    return parent == nullptr;
-}
-
-// Verifica se il nodo è una foglia
-bool QNode::isLeaf() const {
-    return leaf;
-}
-
-// Imposta l'ordine del nodo
-void QNode::setOrder() {
-    size_t localOrder = covered.size();
-    QNode* ref = parent;
-
-    while (ref != nullptr) {
-        localOrder += ref->covered.size();
-        ref = ref->parent;
+// setLeaf con registrazione/deregistrazione come nella “prima versione”
+void QNode::setLeaf(bool lf) {
+    if (leaf == lf) return; // Nessun cambiamento
+    leaf = lf;
+    if (leaf) {
+        // registrazione nella lista di foglie
+        if (owner) owner->registerLeaf(this);
+    } else {
+        // deregistrazione dalla lista di foglie
+        if (owner) owner->unregisterLeaf(this);
     }
-
-    order = localOrder;
 }
 
-// Ottiene gli halfspace coperti
-std::vector<long int> QNode::getCovered() const {
-    std::vector<long int> coveredSpaces = covered;
-    QNode* ref = parent;
-
-    while (ref != nullptr) {
-        coveredSpaces.insert(coveredSpaces.end(), ref->covered.begin(), ref->covered.end());
-        ref = ref->parent;
-    }
-
-    return coveredSpaces;
-}
-
-// Determina la posizione del MBR rispetto a un halfspace
 PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double hs_known) {
     if (mbr.empty()) {
-        // Gestisci il caso in cui mbr è vuoto
-        return PositionHS::OVERLAPPED; // O qualsiasi comportamento predefinito tu preferisca
+        return PositionHS::OVERLAPPED;
     }
 
     double minVal = 0.0;
     double maxVal = 0.0;
     size_t dims = hs_coeff.size();
 
-    // Calcola i valori minimo e massimo dell'halfspace sul MBR
     for (size_t i = 0; i < dims; ++i) {
         double coeff = hs_coeff[i];
         if (coeff >= 0) {
-            minVal += coeff * mbr[i][0]; // Usa il valore minimo del MBR per coefficienti positivi
-            maxVal += coeff * mbr[i][1]; // Usa il valore massimo del MBR per coefficienti positivi
+            minVal += coeff * mbr[i][0];
+            maxVal += coeff * mbr[i][1];
         } else {
-            minVal += coeff * mbr[i][1]; // Usa il valore massimo del MBR per coefficienti negativi
-            maxVal += coeff * mbr[i][0]; // Usa il valore minimo del MBR per coefficienti negativi
+            minVal += coeff * mbr[i][1];
+            maxVal += coeff * mbr[i][0];
         }
     }
 
-    // Confronta i valori min e max con hs_known per determinare la posizione
     if (maxVal < hs_known) {
         return PositionHS::BELOW;
     } else if (minVal > hs_known) {
@@ -104,142 +94,153 @@ PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double
     }
 }
 
-// Inserisce gli halfspace nel nodo e li distribuisce ai nodi figli se necessario
-void QNode::insertHalfspaces(const std::vector<long int>& halfspaces) {
-    size_t num_halfspaces = halfspaces.size();
-    for (size_t i = 0; i < num_halfspaces; ++i) {
-        long int hsID = halfspaces[i];
-        auto hs = halfspaceCache->get(hsID);
-        const std::vector<double>& hs_coeff = hs->coeff;
-        double hs_known = hs->known;
+// Inserimento di un singolo halfspace
+void QNode::insertHalfspace(long hsID) {
+    auto hs = halfspaceCache->get(hsID);
+    if (!hs) return; // Non esiste
 
-        // Determina la posizione dell'halfspace rispetto al MBR del nodo
-        PositionHS pos = MbrVersusHalfSpace(hs_coeff, hs_known);
+    PositionHS pos = MbrVersusHalfSpace(hs->coeff, hs->known);
 
-        if (pos == PositionHS::BELOW) {
-            // L'halfspace è completamente sotto il MBR, memorizzalo nei covered
-            covered.push_back(hsID);
-        } else if (pos == PositionHS::OVERLAPPED) {
-            if (isLeaf()) {
-                // Il nodo è una foglia, memorizza negli halfspaces
-                this->halfspaces.push_back(hsID);
+    switch (pos) {
+    case PositionHS::BELOW:
+        covered.push_back(hsID);
+        break;
+    case PositionHS::OVERLAPPED:
+        if (isLeaf()) {
+            // Aggiungiamo agli halfspaces del nodo
+            halfspaces.push_back(hsID);
 
-                // Verifica se è necessario suddividere il nodo
-                if (this->halfspaces.size() > maxCapacity) {
-                    // Suddividi il nodo
-                    splitNode();
-
-                    // Redistribuisci gli halfspaces tra i figli
-                    for (int k = 0; k < numOfSubdivisions; k++) {
-                        if (children[k] != nullptr) {
-                            children[k]->insertHalfspaces(this->halfspaces);
+            // Se sforiamo la capacità, splittiamo
+            if ((int)halfspaces.size() > maxCapacity) {
+                splitNode();
+                // Dopo lo split, se i figli sono validi, ridistribuiamo
+                if (children) {
+                    for (auto h : halfspaces) {
+                        for (int k = 0; k < numOfSubdivisions; k++) {
+                            if (children[k]) {
+                                children[k]->insertHalfspace(h);
+                            }
                         }
                     }
-                    // Svuota gli halfspaces da questo nodo
-                    this->halfspaces.clear();
+                    halfspaces.clear();
+                    halfspaces.shrink_to_fit();
                 }
-            } else {
-                // Il nodo non è una foglia, passa l'halfspace ai figli
+            }
+        } else {
+            // Propaghiamo ai figli
+            if (children) {
                 for (int k = 0; k < numOfSubdivisions; k++) {
-                    if (children[k] != nullptr) {
-                        children[k]->insertHalfspaces({hsID});
+                    if (children[k]) {
+                        children[k]->insertHalfspace(hsID);
                     }
                 }
             }
         }
+        break;
+    case PositionHS::ABOVE:
+        // Non interessa questo MBR
+        break;
     }
 }
 
-// Suddivide il nodo corrente in sotto-nodi
+// Inserimento di un batch di halfspaces (evitiamo vector temporanei)
+void QNode::insertHalfspaces(const std::vector<long int>& new_halfspaces) {
+    for (auto hsID : new_halfspaces) {
+        insertHalfspace(hsID);
+    }
+}
+
 void QNode::splitNode() {
-    if (!isNorm()) {
-        // Non suddividere se il nodo è invalido
+    if (!norm) return;
+
+    // Se abbiamo pochi halfspace, non splitto
+    size_t totalHS = halfspaces.size() + covered.size();
+    if (totalHS < (size_t)maxCapacity) {
         return;
     }
 
-    // Genera le suddivisioni (MBR dei figli)
-    std::vector<std::vector<std::array<double, 2>>> subDivs = genSubdivisions();
+    // Non siamo più foglia
+    setLeaf(false);
 
+    // Generiamo i MBR dei figli
+    std::vector<std::vector<std::array<double, 2>>> subDivs = genSubdivisions();
     children = new QNode*[numOfSubdivisions];
-    // Inizializza tutti i figli a nullptr
     for (int i = 0; i < numOfSubdivisions; ++i) {
         children[i] = nullptr;
     }
 
     int i = 0;
-    for (const auto& child_mbr : subDivs) {
-        // Crea un nuovo nodo figlio
-        QNode* child = new QNode(this, child_mbr);
-
-        // Verifica se il nodo figlio è valido
+    for (auto& child_mbr : subDivs) {
+        QNode* child = new QNode(owner, this, child_mbr);
         if (child->checkNodeValidity()) {
-            child->setNorm(true); // Imposta il nodo come valido
+            child->setNorm(true);
             children[i] = child;
         } else {
-            // Il nodo è invalido, eliminato
+            // nodo invalido, lo distruggiamo
             child->setNorm(false);
             delete child;
             children[i] = nullptr;
         }
         i++;
     }
-
-    setLeaf(false); // Questo nodo non è più una foglia
 }
 
-// Genera le suddivisioni dell'MBR del nodo corrente
-std::vector<std::vector<std::array<double, 2>>> QNode::genSubdivisions() {
+// Genera 2^dims subdiv per splittare l'MBR
+std::vector<std::vector<std::array<double,2>>> QNode::genSubdivisions() {
     size_t dims = mbr.size();
-    std::vector<std::vector<std::array<double, 2>>> subdivisions;
+    std::vector<std::vector<std::array<double,2>>> subdivisions;
+    subdivisions.reserve(numOfSubdivisions); // evitiamo un po' di realloc
 
-    size_t numOfSubdivisions = 1 << dims; // 2^dims combinazioni
-
-    for (int i = 0; i < numOfSubdivisions; ++i) {
-        std::vector<std::array<double, 2>> child_mbr(dims);
-
-        for (size_t j = 0; j < dims; ++j) {
-            double mid = (mbr[j][0] + mbr[j][1]) / 2.0; // Punto medio dell'MBR nella dimensione j
-
-            if (i & (1 << j)) {
-                // Usa la metà superiore nella dimensione j
-                child_mbr[j][0] = mid;
-                child_mbr[j][1] = mbr[j][1];
+    for (int mask = 0; mask < numOfSubdivisions; ++mask) {
+        std::vector<std::array<double,2>> child_mbr(dims);
+        for (size_t d = 0; d < dims; d++) {
+            double mid = (mbr[d][0] + mbr[d][1]) * 0.5;
+            if (mask & (1 << d)) {
+                // metà superiore
+                child_mbr[d] = {mid, mbr[d][1]};
             } else {
-                // Usa la metà inferiore nella dimensione j
-                child_mbr[j][0] = mbr[j][0];
-                child_mbr[j][1] = mid;
+                // metà inferiore
+                child_mbr[d] = {mbr[d][0], mid};
             }
         }
-
         subdivisions.push_back(child_mbr);
     }
-
     return subdivisions;
 }
 
-// Verifica se il nodo è valido in base al suo MBR
+// Controlla se almeno un vertice dell'MBR soddisfa sum <= normalizedMax
 bool QNode::checkNodeValidity() {
     size_t dims = mbr.size();
-    size_t num_vertices = 1 << dims; // Numero di vertici è 2^dims
+    size_t num_vertices = (1 << dims);
 
     for (size_t i = 0; i < num_vertices; ++i) {
         double sum = 0.0;
-
-        // Genera le coordinate del vertice
-        for (size_t j = 0; j < dims; ++j) {
-            double coord = (i & (1 << j)) ? mbr[j][1] : mbr[j][0]; // Usa il limite superiore o inferiore in base alla maschera
+        for (size_t j = 0; j < dims; j++) {
+            double coord = (i & (1 << j)) ? mbr[j][1] : mbr[j][0];
             sum += coord;
         }
-
         if (sum <= normalizedMax) {
-            // Almeno un vertice è valido
-            return true;
+            return true; // almeno un vertice valido
         }
     }
-    // Tutti i vertici sono invalidi
     return false;
+}
+
+// Restituisce covered "locale" + quelli dei genitori (se si desidera).
+// ATTENZIONE: NON viene usato in updateAllOrders, per evitare eccessive copie
+std::vector<long> QNode::getCovered() const {
+    std::vector<long> out(covered.begin(), covered.end());
+
+    // Se vogliamo aggiungere i covered di tutti i parent
+    const QNode* cur = parent;
+    while (cur) {
+        out.insert(out.end(), cur->covered.begin(), cur->covered.end());
+        cur = cur->parent;
+    }
+    return out;
 }
 
 void QNode::clearHalfspaces() {
     halfspaces.clear();
+    halfspaces.shrink_to_fit();
 }

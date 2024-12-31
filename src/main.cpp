@@ -180,7 +180,7 @@ int main(int argc, char* argv[]) {
             // Reset global variables
             halfspaceCache = nullptr;
             pointToHalfSpaceCache.clear();
-            globalNodeID = 0;
+            //globalNodeID = 0;
             cout << "#  Processing data point " << q << "  #" << endl;
             int idx = q - 1;  // Assuming query contains 1-based indices
 

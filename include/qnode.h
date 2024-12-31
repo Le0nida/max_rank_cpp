@@ -1,75 +1,81 @@
-//
-// Created by leona on 01/08/2024.
-//
-
 #ifndef QNODE_H
 #define QNODE_H
 
 #include <vector>
 #include <array>
+#include <list>
 #include "halfspace.h"
-
-extern int globalNodeID;
 
 enum class PositionHS { BELOW, ABOVE, OVERLAPPED };
 
+// Forward declaration
+class QTree;
+
 class QNode {
 public:
-    QNode(QNode* parent, const std::vector<std::array<double, 2>>& mbr);
+    // Costruttore: richiede QTree* per potersi registrare come foglia
+    QNode(QTree* owner, QNode* parent, const std::vector<std::array<double, 2>>& mbr);
     ~QNode();
 
-    // Disabilita il costruttore di copia e l'assegnazione tramite copia
+    // Disabilita la copia
     QNode(const QNode&) = delete;
     QNode& operator=(const QNode&) = delete;
 
-    // Metodo per ottenere l'ID del nodo
-    int getNodeID() const { return nodeID; }
+    // Controlli
+    bool isRoot() const { return parent == nullptr; }
+    bool isLeaf() const { return leaf; }
+    void setLeaf(bool lf);
 
-    // Verifica se il nodo è la radice
-    bool isRoot() const;
-
-    // Verifica se il nodo è una foglia
-    bool isLeaf() const;
-
-    // Imposta l'ordine del nodo
-    void setOrder();
-
-    // Ottiene gli halfspace coperti
-    std::vector<long int> getCovered() const;
-
-    // Inserisce gli halfspace nel nodo
-    void insertHalfspaces(const std::vector<long int>& halfspaces);
-
-    // Determina la posizione del MBR rispetto a un halfspace
-    PositionHS MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double hs_known);
-
-    // Getter e setter
-    const std::vector<std::array<double, 2>>& getMBR() const { return mbr; }
-    bool isNorm() const { return norm; }
-    void setNorm(bool norm) { this->norm = norm; }
-    void setLeaf(bool leaf) { this->leaf = leaf; }
+    // Ordine
+    void setOrder(size_t o) { order = o; }
     size_t getOrder() const { return order; }
 
-    const std::vector<long int>& getHalfspaces() const { return halfspaces; }
-    void clearHalfspaces();
+    // Insert di batch e singolo halfspace
+    void insertHalfspaces(const std::vector<long int>& halfspaces);
+    void insertHalfspace(long hsID);
 
+    // MBR vs halfspace
+    PositionHS MbrVersusHalfSpace(const std::vector<double>& hs_coeff, double hs_known);
+
+    // Splitting del nodo
     void splitNode();
-    std::vector<std::vector<std::array<double, 2>>> genSubdivisions();
+
+    // Check validity del MBR
     bool checkNodeValidity();
 
-    QNode** children;  // Puntatore ai figli
+    // Getter vari
+    const std::vector<std::array<double, 2>>& getMBR() const { return mbr; }
+    bool isNorm() const { return norm; }
+    void setNorm(bool val) { norm = val; }
+
+    // Ritorna gli halfspace "coperti" dal nodo (più quelli ereditati dal padre)
+    // Usata se serve altrove, ma NON usata in updateAllOrders per evitare overhead
+    std::vector<long> getCovered() const;
+
+    std::vector<long> getHalfspaces() const { return halfspaces; }
+    // Utility
+    void clearHalfspaces();
+
+    // Puntatori e dati pubblici di servizio
+    QNode** children;  // array di figli di dimensione numOfSubdivisions
+    std::vector<long> covered;      // halfspace completamente "sotto" MBR
+    std::vector<long> halfspaces;   // halfspace che effettivamente interessano il nodo
+
+    // Per rimuovere il nodo dalla lista di foglie in O(1)
+    std::list<QNode*>::iterator leafIterator;
 
 private:
-    long int nodeID;                        // ID univoco del nodo
-    QNode* parent;                          // Puntatore al nodo genitore
+    // Riferimento all'albero e al parent
+    QTree* owner;
+    QNode* parent;
 
-    std::vector<std::array<double, 2>> mbr; // Minimum bounding region
-    bool norm;                              // Flag di normalizzazione
-    bool leaf;                              // Flag di foglia
-    size_t order;                           // Ordine del nodo
+    std::vector<std::array<double, 2>> mbr;  // bounding region
+    bool norm;   // se il nodo è valido
+    bool leaf;   // se è foglia
+    size_t order; // "ordine" del nodo
 
-    std::vector<long int> covered;          // Halfspace coperti
-    std::vector<long int> halfspaces;       // Halfspace nel nodo
+    // Funzioni di supporto
+    std::vector<std::vector<std::array<double, 2>>> genSubdivisions();
 };
 
 #endif // QNODE_H
