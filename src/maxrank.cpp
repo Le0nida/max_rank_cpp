@@ -115,21 +115,18 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         new_halfspaces = std::move(unique_new_halfspaces);
 
         if (!new_halfspaces.empty()) {
-            qt.inserthalfspaces(new_halfspaces);
+            //qt.inserthalfspaces(new_halfspaces);
+            qt.inserthalfspacesMacroSplit(new_halfspaces);
             std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted" << std::endl;
         }
 
-        auto new_leaves = qt.getLeaves();
+        auto new_leaves = qt.getAllLeaves();//qt.getLeaves();
         qt.updateAllOrders();
 
         std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->getOrder() < b->getOrder(); });
 
         return std::make_pair(new_sky, new_leaves);
-
-
     };
-
-
 
 
     auto [sky, leaves] = updateqt({});

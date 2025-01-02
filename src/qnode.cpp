@@ -19,29 +19,13 @@ QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>
       leaf(true),
       order(0)
 {
-    if (owner) {
-        owner->registerLeaf(this); // Mi registro come foglia
-    }
 }
 
-QNode::~QNode() {
-    // ATTENZIONE: Non eliminiamo i figli qui, perché lo fa QTree in modo non ricorsivo.
-    // Se siamo foglia, deregistriamo
-    if (leaf && owner) {
-        owner->unregisterLeaf(this);
-    }
-}
-
-void QNode::setLeaf(bool lf) {
+void QNode::setLeaf(bool lf)
+{
     if (leaf == lf) return;
     leaf = lf;
-    if (leaf) {
-        if (owner) owner->registerLeaf(this);
-    } else {
-        if (owner) owner->unregisterLeaf(this);
-    }
 }
-
 std::vector<long> QNode::getCovered() const {
     // Se serve aggregare i covered dei parent:
     std::vector<long> out(covered.begin(), covered.end());

@@ -12,7 +12,6 @@ class QTree;
 class QNode {
 public:
     QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr);
-    ~QNode();
 
     QNode(const QNode&) = delete;
     QNode& operator=(const QNode&) = delete;
