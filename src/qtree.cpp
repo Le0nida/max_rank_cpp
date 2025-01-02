@@ -68,16 +68,13 @@ void QTree::inserthalfspaces(const std::vector<long int>& halfspaces) {
     root->insertHalfspaces(halfspaces);
 }
 
-// *** NUOVO ***
-// 1) Cancella albero esistente (root, macroRoots)
-// 2) Macro-splitta MBR globale in subregioni
-// 3) Partiziona i halfspaces (duplicandoli se servono) su tali subregioni
-// 4) In parallelo, costruisce i sub-root con la solita insertHalfspaces
+// *** MODIFICA PRINCIPALE ***
+// Ora *non* distruggiamo più l'albero esistente: riutilizziamo o creiamo i sub-root necessari.
 void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) {
     if (halfspaces.empty()) return;
 
-    // Distruggiamo l'albero old
-    destroyAllNodes();
+    // NON distruggiamo l'albero esistente:
+    // (rimosso) //destroyAllNodes();
 
     // Definiamo l'MBR globale
     std::vector<std::array<double,2>> globalMBR(dims, {0.0, 1.0});
@@ -89,20 +86,16 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
     // Prepara i vettori di halfspaces per ogni subMBR
     std::vector< std::vector<long> > subHS(nSub);
 
-    // Un unico pass per distribuire i halfspaces
-    // Se un halfspace OverLAPPED con più subMBR, lo duplico in piu subHS[..]
+    // Distribuiamo i nuovi halfspaces tra i vari subMBR
     for (auto hsID : halfspaces) {
         auto hsPtr = halfspaceCache->get(hsID);
         if (!hsPtr) continue;
 
-        // Controlla overlap con ciascun subMBR
-        for (int i=0; i<nSub; i++) {
-            // Esegui la logica "MbrVersusHalfSpace" su subMBR[i]
-            // -> se OVERLAPPED => subHS[i].push_back(hsID)
-            double minVal=0, maxVal=0;
-            for (int d=0; d<dims; d++) {
+        for (int i = 0; i < nSub; i++) {
+            double minVal = 0, maxVal = 0;
+            for (int d = 0; d < dims; d++) {
                 double c = hsPtr->coeff[d];
-                if (c>=0) {
+                if (c >= 0) {
                     minVal += c * subMBRs[i][d][0];
                     maxVal += c * subMBRs[i][d][1];
                 } else {
@@ -122,33 +115,34 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
         }
     }
 
-    // Ora costruiamo in parallelo i sotto-alberi
-    macroRoots.resize(nSub, nullptr);
+    // Assicuriamoci che macroRoots abbia la taglia giusta
+    if ((int)macroRoots.size() < nSub) {
+        macroRoots.resize(nSub, nullptr);
+    }
 
-    // Esempio: std::async
-    std::vector< std::future<QNode*> > futures;
+    // Costruzione/aggiornamento parallelo dei sotto-alberi
+    std::vector<std::future<void>> futures;
     futures.reserve(nSub);
 
-    for (int i=0; i<nSub; i++) {
+    for (int i = 0; i < nSub; i++) {
         if (subHS[i].empty()) {
-            // subMBR vuoto => nessun halfspace => potremmo lasciare null
-            macroRoots[i] = nullptr;
+            // Nessun halfspace per questa partizione: non c'è nulla da aggiungere
             continue;
         }
-        // lancio un task
-        futures.push_back( std::async(std::launch::async, [this, i, &subHS, &subMBRs]() {
-            // Costruisco un subtree => buildSubtree
-            return buildSubtree(subMBRs[i], subHS[i]);
+        futures.push_back(std::async(std::launch::async, [this, i, &subHS, &subMBRs]() {
+            if (!macroRoots[i]) {
+                // Creiamo un nuovo subtree se non esiste
+                macroRoots[i] = buildSubtree(subMBRs[i], subHS[i]);
+            } else {
+                // Altrimenti inseriamo semplicemente i nuovi halfspaces
+                macroRoots[i]->insertHalfspaces(subHS[i]);
+            }
         }));
     }
-    // Raccogliamo i risultati
-    // NB: l'ordine dei future in "futures" deve corrispondere al subHS
-    // Un semplice trucco: store (i, future) in un array
-    int idxf=0;
-    for (int i=0; i<nSub; i++) {
-        if (subHS[i].empty()) continue;
-        QNode* sr = futures[idxf++].get();
-        macroRoots[i] = sr;
+
+    // Aspettiamo che tutti i thread abbiano terminato
+    for (auto &f : futures) {
+        f.get();
     }
 }
 
@@ -158,11 +152,11 @@ QTree::macroSplitMBR(const std::vector<std::array<double,2>>& globalMBR) const
 {
     std::vector< std::vector<std::array<double,2>> > ret;
     ret.resize( (1<<dims) );
-    for (int mask=0; mask<(1<<dims); mask++) {
+    for (int mask = 0; mask < (1 << dims); mask++) {
         ret[mask].resize(dims);
-        for (int d=0; d<dims; d++) {
-            double mid = 0.5*(globalMBR[d][0] + globalMBR[d][1]);
-            if (mask & (1<<d)) {
+        for (int d = 0; d < dims; d++) {
+            double mid = 0.5 * (globalMBR[d][0] + globalMBR[d][1]);
+            if (mask & (1 << d)) {
                 ret[mask][d] = {mid, globalMBR[d][1]};
             } else {
                 ret[mask][d] = {globalMBR[d][0], mid};
@@ -172,35 +166,25 @@ QTree::macroSplitMBR(const std::vector<std::array<double,2>>& globalMBR) const
     return ret;
 }
 
-// Costruisce un subtree interno usando la logica del QNode
-// E' un "mini-quadtree" con radice => new QNode(...) e poi node->insertHalfspaces(...).
-// Se preferisci un "bulk build" più evoluto, puoi implementarlo qui.
-// Per restare coerenti con la tua implementazione, usiamo insertHalfspaces.
+// Costruisce un subtree con la logica incrementale
 QNode* QTree::buildSubtree(const std::vector<std::array<double,2>>& subMBR,
                            const std::vector<long>& subHS) const
 {
-    // Costruiamo un QNode con parent=null, e "owner=this" se vogliamo,
-    // ma se vogliamo che each subroot gestisca le sue leaves in "this->leaves",
-    // potremmo pass owner=this => cosi' "registerLeaf" funziona.
     QNode* rootNode = new QNode(const_cast<QTree*>(this), nullptr, subMBR);
-    // Adesso, “inseriamo” tutti i halfspaces
     rootNode->insertHalfspaces(subHS);
     return rootNode;
 }
 
-// Ritorna tutte le leaves: in un “macro-split”, prendiamo leaves di macroRoots + eventuale root
+// Ritorna tutte le leaves dai macroRoots
 std::vector<QNode*> QTree::getAllLeaves() const {
     std::vector<QNode*> all;
-    // se vuoi includere pure la "old root"
-    // BFS su root (se non nullo e non usato) => a volte potresti ignorarlo.
-
-    // BFS su ciascun macroRoots
     for (auto sr : macroRoots) {
         if (!sr) continue;
         std::queue<QNode*> Q;
         Q.push(sr);
         while (!Q.empty()) {
-            QNode* curr = Q.front(); Q.pop();
+            QNode* curr = Q.front();
+            Q.pop();
             if (curr->isLeaf()) {
                 all.push_back(curr);
             } else {
@@ -221,7 +205,8 @@ void QTree::updateAllOrders() {
         std::queue<QNode*> QQ;
         QQ.push(root);
         while (!QQ.empty()) {
-            QNode* curr = QQ.front(); QQ.pop();
+            QNode* curr = QQ.front();
+            QQ.pop();
             for (auto c: curr->children) {
                 if (c) {
                     size_t newOrder = curr->getOrder() + c->covered.size();
@@ -239,7 +224,8 @@ void QTree::updateAllOrders() {
         std::queue<QNode*> QQ;
         QQ.push(sr);
         while (!QQ.empty()) {
-            QNode* curr = QQ.front(); QQ.pop();
+            QNode* curr = QQ.front();
+            QQ.pop();
             for (auto c: curr->children) {
                 if (!c) continue;
                 c->setOrder(curr->getOrder() + c->covered.size());
