@@ -112,6 +112,7 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
             }
             if (maxVal < hsPtr->known) {
                 // BELOW => potremmo ignorare
+                subHS[i].push_back(hsID);
             } else if (minVal > hsPtr->known) {
                 // ABOVE => ignoriamo
             } else {
