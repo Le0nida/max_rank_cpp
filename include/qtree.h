@@ -16,19 +16,16 @@ public:
     // Inserisce in modo tradizionale i halfspaces (incrementale)
     void inserthalfspaces(const std::vector<long int>& halfspaces);
 
-    // *** NUOVO *** Inserimento parallelo via macro-split:
-    // Costruisce una "foresta" di sub-root, uno per ciascuna macro-porzione dell'MBR.
-    // Non usa lock: ogni sub-root è costruito in parallelo con i propri halfspaces.
+    // Inserimento parallelo via macro-split
     void inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces);
 
-    // Ritorna TUTTE le foglie (di tutti i sub-root, se stai usando macro-split).
-    // Se stai usando la vecchia root, puoi unire i due meccanismi, o ignorare root.
+    // Ritorna TUTTE le foglie (di tutti i sub-root)
     std::vector<QNode*> getAllLeaves() const;
 
-    // Mantieni se serve
+    // Ritorna le foglie della "old root" (se usata)
     const std::vector<QNode*>& getLeaves() const { return leaves; }
 
-    // Aggiorna l'ordine di tutti i nodi: sia root che macroRoots
+    // Aggiorna l'ordine di tutti i nodi: root + macroRoots
     void updateAllOrders();
 
     QNode* getRoot() const { return root; }
@@ -39,13 +36,11 @@ private:
     QNode* createroot();
     void destroyAllNodes();
 
-    // *** NUOVO *** Genera i sub-MBR
+    // Genera (una volta sola) i sub-MBR e li memorizza in precomputedSubMBRs
     std::vector< std::vector<std::array<double,2>> >
     macroSplitMBR(const std::vector<std::array<double,2>>& globalMBR) const;
 
-    // *** NUOVO *** Costruisce in parallelo un sub-root con i halfspaces
-    // e restituisce il pointer a QNode*.
-    // Usa la logica incrementale interna (insertHalfspaces).
+    // Costruisce un sub-root con i halfspaces
     QNode* buildSubtree(const std::vector<std::array<double,2>>& subMBR,
                         const std::vector<long>& subHS) const;
 
@@ -53,14 +48,17 @@ private:
     int dims;       // dimensioni
     int maxhsnode;  // soglia max halfspaces per splitting
 
-    // Radice old
+    // Radice "classica" (eventualmente usata)
     QNode* root;
 
-    // Vettore di foglie (approccio "root" old)
+    // Vettore di foglie relativo alla root classica
     std::vector<QNode*> leaves;
 
-    // *** NUOVO *** "foresta" di sub-root se si usa macroSplit
+    // "foresta" di sub-root se si usa macroSplit
     std::vector<QNode*> macroRoots;
+
+    // **NOVITÀ**: SubMBR pre-calcolati (dimensione 2^dims)
+    std::vector< std::vector<std::array<double,2>> > precomputedSubMBRs;
 };
 
 #endif // QTREE_H

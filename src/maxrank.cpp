@@ -49,27 +49,30 @@ std::vector<std::string> readCombinations(const int& dims) {
     fclose(fp);
     return comb;
 }
-bool MbrIsValid(const int &Dimen, const float hs[], const std::vector<std::array<double, 2>> &mbr,
-                const std::vector<std::string> &Comb) {
+int dims;
+float queryPlane[10];
+std::vector<std::string> Comb;
+
+bool MbrIsValid(const std::vector<std::array<double, 2>> &mbr) {
     int numAbove = 0;
     int numBelow = 0;
     long int numOfVertices = Comb.size();
 
     // Usa un array statico per coord invece di ricostruirlo dinamicamente ogni volta
-    std::vector<double> coord(Dimen, 0.0);
+    std::vector<double> coord(dims, 0.0);
 
     for (const auto &combination : Comb) {
         float sum = 0.0; // Calcola sum durante la costruzione di coord
-        for (int j = 0; j < Dimen; ++j) {
+        for (int j = 0; j < dims; ++j) {
             coord[j] = (combination[j] == '0') ? mbr[j][0] : mbr[j][1];
             sum += coord[j];
         }
 
-        // Confronta sum con hs[Dimen]
-        if (sum > hs[Dimen]) {
+        // Confronta sum con hs[dims]
+        if (sum > queryPlane[dims]) {
             ++numAbove;
             if (numAbove > 0 && numBelow > 0) break; // Early exit: l'MBR è intersecato
-        } else if (sum < hs[Dimen]) {
+        } else if (sum < queryPlane[dims]) {
             ++numBelow;
             if (numAbove > 0 && numBelow > 0) break; // Early exit: l'MBR è intersecato
         }
@@ -82,10 +85,9 @@ bool MbrIsValid(const int &Dimen, const float hs[], const std::vector<std::array
 }
 
 std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
-    const int dims = static_cast<int>(p.dims - 1);
+    dims = static_cast<int>(p.dims - 1);
     numOfSubdivisions = (int) pow(2.0, dims);
-    std::vector<std::string> comb = readCombinations(dims);
-    float queryPlane[dims];
+    Comb = readCombinations(dims);
     for (int i = 0; i < dims + 1; i++) queryPlane[i] = 1;
 
     QTree qt(dims, 10);
@@ -146,7 +148,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                 break;
             }
             //prune away leaf nodes that lie about hyperplane q_1+q2+...+q_d < 1;
-            if (!MbrIsValid(dims, queryPlane, leaf->getMBR(), comb)) {
+            if (!MbrIsValid(leaf->getMBR())) {
                 //std::cout << "Leaf node " << leaf->getNodeID() << " is pruned!" << std::endl;
                 continue;
             }
