@@ -39,6 +39,7 @@ bool Interval::issingular() const
 
 std::vector<std::string> genhammingstrings(int strlen, int weight)
 {
+    if (strlen > 21) strlen = 21;
     bool botup;
     if (weight > std::ceil(strlen / 2.0))
     {
