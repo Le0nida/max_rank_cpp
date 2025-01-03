@@ -11,7 +11,7 @@ class QTree;
 
 class QNode {
 public:
-    QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr);
+    QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr, int level);
 
     QNode(const QNode&) = delete;
     QNode& operator=(const QNode&) = delete;
@@ -67,6 +67,7 @@ private:
     bool norm;
     bool leaf;
     size_t order;
+    int level;
 };
 
 #endif // QNODE_H

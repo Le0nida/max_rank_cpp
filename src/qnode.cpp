@@ -6,10 +6,11 @@
 #include <queue>
 
 static int normalizedMax = 1;
-static int maxCapacity = 10;  // <= potresti volerlo più alto!
+static int maxCapacity = 20;  // <= potresti volerlo più alto!
+static int maxLevel = 8;
 extern int numOfSubdivisions;
 
-QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr)
+QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr, int level)
     : owner(owner),
       parent(parent),
       children(), // vuoto, verrà riempito in splitNode() se serve
@@ -17,7 +18,8 @@ QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>
       mbr(mbr),
       norm(true),
       leaf(true),
-      order(0)
+      order(0),
+      level(level)
 {
 }
 
@@ -75,16 +77,19 @@ void QNode::insertHalfspace(long hsID) {
                 halfspaces.push_back(hsID);
                 // Se sforiamo la capacità => split
                 if ((int)halfspaces.size() > maxCapacity && norm) {
-                    splitNode();
-                    // Se abbiamo figli, ridistribuiamo
-                    if (!children.empty()) {
-                        for (auto h : halfspaces) {
-                            for (auto* ch : children) {
-                                if (ch) ch->insertHalfspace(h);
+                    if (level < maxLevel)
+                    {
+                        splitNode();
+                        // Se abbiamo figli, ridistribuiamo
+                        if (!children.empty()) {
+                            for (auto h : halfspaces) {
+                                for (auto* ch : children) {
+                                    if (ch) ch->insertHalfspace(h);
+                                }
                             }
+                            halfspaces.clear();
+                            halfspaces.shrink_to_fit();
                         }
-                        halfspaces.clear();
-                        halfspaces.shrink_to_fit();
                     }
                 }
             } else {
@@ -107,6 +112,10 @@ void QNode::insertHalfspaces(const std::vector<long>& new_halfspaces) {
 }
 
 void QNode::splitNode() {
+
+    if (level == maxLevel)
+        return;
+
     // Già controllato da caller se n>maxCapacity, ma ricontrolliamo
     if (!norm) return;
 
@@ -134,7 +143,7 @@ void QNode::splitNode() {
             }
         }
         // Creo QNode figlio
-        QNode* child = new QNode(owner, this, child_mbr);
+        QNode* child = new QNode(owner, this, child_mbr, level + 1);
         if (child->checkNodeValidity()) {
             child->setNorm(true);
             children[mask] = child;

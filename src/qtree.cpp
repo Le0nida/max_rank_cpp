@@ -35,7 +35,7 @@ QTree::~QTree() {
 // Crea una root con MBR unitaria [0,1]^dims
 QNode* QTree::createroot() {
     std::vector<std::array<double,2>> mbr(dims, {0.0, 1.0});
-    QNode* r = new QNode(this, nullptr, mbr);
+    QNode* r = new QNode(this, nullptr, mbr, 0);
     return r;
 }
 
@@ -226,7 +226,7 @@ QNode* QTree::buildSubtree(const std::vector<std::array<double,2>>& subMBR,
                            const std::vector<long>& subHS) const
 {
     // Creiamo un QNode radice di sub-albero
-    QNode* rootNode = new QNode(const_cast<QTree*>(this), nullptr, subMBR);
+    QNode* rootNode = new QNode(const_cast<QTree*>(this), nullptr, subMBR, 1);
     // Inserimento incrementale
     rootNode->insertHalfspaces(subHS);
     return rootNode;
