@@ -12,6 +12,7 @@
 #include <iostream>
 #include <limits>
 #include <string.h>
+#define MAXNOBINSTRINGTOCHECK 40000
 
 int numOfSubdivisions = 0;
 
@@ -155,11 +156,12 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             }
 
             int hamweight = 0;
-            while (hamweight <= leaf->getHalfspaces().size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular && hamweight < 4) {
+            while (hamweight <= leaf->getHalfspaces().size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
+                //std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->getHalfspaces().size();
                 std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->getHalfspaces().size()), hamweight);
-                //std::cout << "Hamstring " << hamstrings.size() << std::endl;
+                //std::cout << ", Hamstring " << hamstrings.size();
                 std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
-                //std::cout << "Celle " << cells.size() << std::endl;
+                //std::cout << ", Celle " << cells.size() << std::endl;
                 if (!cells.empty()) {
                     for (auto& cell : cells) {
                         cell.order = leaf_order + hamweight;
@@ -173,6 +175,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                     }
                     break;
                 }
+                if (hamstrings.size() > MAXNOBINSTRINGTOCHECK) break;
                 hamweight++;
             }
         }
