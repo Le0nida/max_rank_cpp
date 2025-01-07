@@ -46,3 +46,4 @@ CMakeSettings.json
 /maxrank_release_mmfiles
 /maxrank_normal
 /cmake-build-relwithdebinfo
+examples/queryfile.txt
