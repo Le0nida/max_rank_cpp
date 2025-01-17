@@ -11,4 +11,6 @@
 
 std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p);
 
+std::pair<int, std::vector<Interval>> aa_2d(const std::vector<Point>& data, const Point& p);
+
 #endif // MAXRANK_H

@@ -202,25 +202,32 @@ int main(int argc, char* argv[]) {
             cells.push_back(cell_entry);
         }
     } else {
-        /*for (int q : query) {
+        for (int q : query) {
             cout << "#  Processing data point " << q << "  #" << endl;
             int idx = q - 1;
 
-            cout << "#  " << Eigen::Map<Eigen::VectorXd>(data[idx].coord.data(), data[idx].coord.size()).transpose() << "  #" << endl;
+            cout << "#  " << Eigen::Map<Eigen::VectorXd>(data[idx].coord.data(),
+                    data[idx].coord.size()).transpose() << "  #" << endl;
 
             int maxrank;
             vector<Interval> mincells;
             tie(maxrank, mincells) = aa_2d(data, data[idx]);
-            cout << "#  MaxRank: " << maxrank << "  NOfMincells: " << mincells.size() << "  #" << endl;
 
+            cout << "#  MaxRank: " << maxrank
+                 << "  NOfMincells: " << mincells.size() << "  #" << endl;
+
+            // Salvataggio su CSV
             res.push_back({(double)q, (double)maxrank});
+
+            // Esempio di come salvare i range di ogni mincell
+            // (o solo il primo mincell, a seconda delle tue necessità)
             vector<double> cell_entry = { (double)q };
-            for (const auto& cell : mincells) {
+            for (const auto &cell : mincells) {
                 cell_entry.push_back(cell.range.first);
                 cell_entry.push_back(cell.range.second);
             }
             cells.push_back(cell_entry);
-        }*/
+        }
     }
 
     // Write results to CSV

@@ -5,6 +5,7 @@
 #ifndef CELL_H
 #define CELL_H
 
+#include <algorithm>
 #include <string>
 #include <utility> // For std::pair
 #include <vector>
@@ -26,16 +27,34 @@ public:
     Point feasible_pnt;
 };
 
-class Interval {
-public:
-    Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft);
+struct Interval {
+    // La retta di “supporto” che ha generato questo intervallo
+    std::shared_ptr<HalfLine> halfline;
 
-    bool issingular() const;
-
-    HalfLine halfline;
+    // L’intervallo [range.first, range.second] sull’asse x
+    // dove l'ordine rimane costante
     std::pair<double, double> range;
-    int coversleft;
-    std::vector<HalfSpace> covered;
+
+    // Se vero, allora al termine di questo intervallo
+    // la halfline “esce” dalla copertura. Altrimenti “entra”.
+    bool coversleft;
+
+    // Quante halflines coprono quell’intervallo
+    int order;
+
+    // Tutte le halflines che coprono l’intervallo
+    std::vector<std::shared_ptr<HalfLine>> covered;
+
+    Interval(std::shared_ptr<HalfLine> hl,
+             std::pair<double, double> r,
+             bool c)
+        : halfline(std::move(hl)), range(r), coversleft(c), order(0) {}
+
+    bool issingular() const {
+        return std::all_of(covered.begin(), covered.end(),
+    [](const std::shared_ptr<HalfLine>& hl) { return hl->arr == Arrangement::SINGULAR; });
+
+    }
 };
 
 std::vector<std::string> genhammingstrings(int strlen, int weight);

@@ -25,18 +25,6 @@ bool Cell::issingular() const
                        [](long int id) { return halfspaceCache->get(id)->arr == Arrangement::SINGULAR; });
 }
 
-// Constructor for Interval class remains unchanged
-Interval::Interval(const HalfLine& halfline, const std::pair<double, double>& range, int coversleft)
-    : halfline(halfline), range(range), coversleft(coversleft)
-{
-}
-
-bool Interval::issingular() const
-{
-    return std::all_of(covered.begin(), covered.end(),
-                       [](const HalfSpace& hl) { return hl.arr == Arrangement::SINGULAR; });
-}
-
 std::vector<std::string> genhammingstrings(int strlen, int weight)
 {
     if (strlen > 21) strlen = 21;

@@ -218,3 +218,219 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         std::tie(sky, leaves) = updateqt(sky);
     }
 }
+
+
+std::pair<int, std::vector<Interval>> aa_2d(const std::vector<Point>& data, const Point& p) {
+    // 1) Troviamo dominatori e incomparabili
+    std::vector<Point> dominators = getdominators(data, p);
+    std::vector<Point> incomp     = getincomparables(data, p);
+
+    // 2) Skyline dei soli incomparabili
+    std::vector<Point> sky = getskyline(incomp);
+
+    // 3) Creiamo la halfline relativa al punto p
+    //    (in 2D la score function di p si rappresenta come retta y = m*x + q)
+    auto p_line = std::make_shared<HalfLine>(p);
+
+    // 4) Costruiamo un vettore di Intervals che rappresentano le "suddivisioni"
+    //    dell'asse x in cui l'ordine non cambia
+    std::vector<Interval> intervals;
+    intervals.reserve(sky.size() + 1);
+
+    // Per ogni punto in sky:
+    // - Creiamo la halfline corrispondente
+    // - Troviamo l'intersezione con la halfline di p
+    // - Creiamo un intervallo [NaN, x_intersect], se x_intersect esiste,
+    //   con coversleft = (sp_line->q < p_line->q) (come nel Python).
+    for (const auto& sp : sky) {
+        auto sp_line = std::make_shared<HalfLine>(sp);
+        Point isect = find_halflines_intersection(*p_line, *sp_line);
+
+        // Se r.m == s.m, in Python ottenevamo None: qui isect avrà Infinity
+        // Gestiamo quindi il caso parallelo
+        if (std::isinf(isect.coord[0])) {
+            // Niente intersezione "finita": a tua scelta se ignorare o gestire diversamente
+            continue;
+        }
+
+        double x_intersect = isect.coord[0];
+        bool coversleft    = (sp_line->q < p_line->q);
+
+        intervals.emplace_back(
+            sp_line,
+            std::make_pair(std::numeric_limits<double>::quiet_NaN(), x_intersect),
+            coversleft
+        );
+    }
+
+    // 5) Aggiungiamo anche un intervallo "fittizio" che arriva fino a x=1
+    //    (come fa la versione Python, Interval(None, [NaN, 1], false))
+    intervals.emplace_back(
+        nullptr,
+        std::make_pair(std::numeric_limits<double>::quiet_NaN(), 1.0),
+        false
+    );
+
+    std::cout << "> " << sky.size() << " halfline(s) have been inserted" << std::endl;
+
+    // 6) Avviamo il ciclo di espansione
+    int n_exp = 0;
+    std::vector<Interval> mincells_singular;  // Per collezionare i mincells singolari finali
+
+    while (true) {
+        // 6a) Ordiniamo gli intervalli in base all'estremo destro (range.second),
+        //     esattamente come in Python sorted(key=lambda cell: cell.range[1])
+        std::sort(intervals.begin(), intervals.end(), [](const Interval& a, const Interval& b){
+            return a.range.second < b.range.second;
+        });
+
+        double last_end = 0.0;
+        int minorder = std::numeric_limits<int>::max();
+        std::vector<Interval> mincells;
+
+        // Costruiamo la "copertura" iniziale: in Python si faceva:
+        //   covering = [cell.halfline for cell in intervals if cell.coversleft]
+        //   ma lì veniva gestito in modo un po’ diverso.
+        //   Qui lo facciamo on-the-fly nel loop.
+        std::vector<std::shared_ptr<HalfLine>> covering;
+
+        // Prima passata: raccogliamo le halflines che hanno coversleft==true
+        // e che hanno range.second < 0?
+        // Oppure seguiamo pedissequamente la logica Python:
+        for (auto &cell : intervals) {
+            if (cell.coversleft) {
+                // L’idea in Python era: se coversleft è True, la halfline 'esce'
+                // al confine di cell.range.second. Quindi prima di quell’ x,
+                // la halfline è "attiva".
+                // Se volessimo avere lo stesso effetto, potremmo aggiungere
+                // la halfline a covering.
+                covering.push_back(cell.halfline);
+            }
+        }
+
+        // 6b) Cicliamo sugli intervalli nell’ordine (già sortato):
+        for (auto &cell : intervals) {
+            // L'order è semplicemente la dimensione della covering
+            cell.order   = (int) covering.size();
+            cell.covered = covering;
+
+            // Aggiorniamo l’estremo sinistro dell’intervallo
+            cell.range.first = last_end;
+            // Aggiorniamo last_end
+            last_end = cell.range.second;
+
+            // Aggiorniamo minorder e mincells
+            if (cell.order < minorder) {
+                minorder = cell.order;
+                mincells.clear();
+                mincells.push_back(cell);
+            } else if (cell.order == minorder) {
+                mincells.push_back(cell);
+            }
+
+            // Ora la logica "se coversleft, pop(0), else push_back"
+            if (cell.coversleft) {
+                // In Python: covering.pop(0)
+                // Qui potremmo fare covering.erase(covering.begin()), se non vuota
+                if (!covering.empty()) {
+                    covering.erase(covering.begin());
+                }
+            } else {
+                // covering.append(cell.halfline)
+                covering.push_back(cell.halfline);
+            }
+        }
+
+        std::cout << "> Expansion " << n_exp << ": Found " << mincells.size() << " mincell(s)" << std::endl;
+
+        // 6c) Controlliamo mincells per eventuali singolari
+        //     e costruiamo la lista di halflines da "espandere"
+        int new_singulars = 0;
+        std::vector<std::shared_ptr<HalfLine>> to_expand;
+        for (auto &mc : mincells) {
+            if (mc.issingular()) {
+                mincells_singular.push_back(mc);
+                new_singulars++;
+            } else {
+                // Se l'intervallo non è singolare,
+                // allora le halflines in mc.covered che sono ancora AUGMENTED
+                // sono candidate per l’espansione (-> SINGULAR).
+                for (auto &hl : mc.covered) {
+                    if (hl->arr == Arrangement::AUGMENTED) {
+                        // Evitare duplicati
+                        if (std::find(to_expand.begin(), to_expand.end(), hl) == to_expand.end()) {
+                            to_expand.push_back(hl);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (new_singulars > 0) {
+            std::cout << "> Expansion " << n_exp << ": Found "
+                      << new_singulars << " singular mincell(s) with a minorder of "
+                      << minorder << std::endl;
+        }
+
+        // 6d) Se non ci sono halflines da espandere, abbiamo finito:
+        if (to_expand.empty()) {
+            // Il MaxRank in 2D è dominators.size() + minorder + 1
+            return std::make_pair(
+                (int)dominators.size() + minorder + 1,
+                mincells_singular
+            );
+        }
+
+        // Altrimenti si continua l'espansione
+        n_exp++;
+        std::cout << "> Expansion " << n_exp << ": "
+                  << to_expand.size() << " halfline(s) will be expanded" << std::endl;
+
+        // 6e) Segniamo come SINGULAR le halflines in to_expand
+        //     e rimuoviamo i corrispondenti punti “incomparabili”:
+        for (auto &hl : to_expand) {
+            hl->arr = Arrangement::SINGULAR;
+            // Rimuovi il punto associato a questa halfline (hl->pnt) da incomp
+            auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point &pt){
+                return pt.id == hl->pnt.id;
+            });
+            if (it != incomp.end()) {
+                incomp.erase(it);
+            }
+        }
+
+        // 6f) Ricostruiamo lo skyline con i rimanenti incomparabili
+        std::vector<Point> new_sky = getskyline(incomp);
+
+        // Aggiungiamo le *nuove* halflines (rispetto allo sky precedente)
+        std::vector<Point> to_insert;
+        for (auto &sp : new_sky) {
+            if (std::find_if(sky.begin(), sky.end(), [&](const Point &q){ return q.id == sp.id; }) == sky.end()) {
+                to_insert.push_back(sp);
+            }
+        }
+        sky = new_sky; // aggiorniamo lo sky globale
+
+        // Per ogni punto da inserire, calcoliamo l’intersezione e creiamo un Interval
+        for (auto &sp : to_insert) {
+            auto sp_line = std::make_shared<HalfLine>(sp);
+            Point isect = find_halflines_intersection(*p_line, *sp_line);
+            if (std::isinf(isect.coord[0])) {
+                continue;
+            }
+            double x_intersect = isect.coord[0];
+            bool coversleft    = (sp_line->q < p_line->q);
+
+            intervals.emplace_back(
+                sp_line,
+                std::make_pair(std::numeric_limits<double>::quiet_NaN(), x_intersect),
+                coversleft
+            );
+        }
+
+        if (!to_insert.empty()) {
+            std::cout << "> " << to_insert.size()
+                      << " halfline(s) have been inserted" << std::endl;
+        }
+    } // while (true)
+}
