@@ -6,8 +6,6 @@
 #include <queue>
 
 static int normalizedMax = 1;
-static int maxCapacity = 20;  // <= potresti volerlo più alto!
-static int maxLevel = 8;
 extern int numOfSubdivisions;
 
 QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr, int level)
@@ -76,8 +74,8 @@ void QNode::insertHalfspace(long hsID) {
             if (isLeaf()) {
                 halfspaces.push_back(hsID);
                 // Se sforiamo la capacità => split
-                if ((int)halfspaces.size() > maxCapacity && norm) {
-                    if (level < maxLevel)
+                if ((int)halfspaces.size() > owner->maxhsnode && norm) {
+                    if (level < owner->maxLevel)
                     {
                         splitNode();
                         // Se abbiamo figli, ridistribuiamo
@@ -113,14 +111,14 @@ void QNode::insertHalfspaces(const std::vector<long>& new_halfspaces) {
 
 void QNode::splitNode() {
 
-    if (level == maxLevel)
+    if (level == owner->maxLevel)
         return;
 
     // Già controllato da caller se n>maxCapacity, ma ricontrolliamo
     if (!norm) return;
 
     size_t totalHS = halfspaces.size() + covered.size();
-    if (totalHS < (size_t)maxCapacity) {
+    if (totalHS < (size_t)owner->maxhsnode) {
         return;
     }
 

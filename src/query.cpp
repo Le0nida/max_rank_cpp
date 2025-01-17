@@ -4,7 +4,7 @@
 
 std::vector<Point> getdominators(const std::vector<Point>& data, const Point& p) {
     std::vector<Point> dominators;
-
+    dominators.reserve(data.size()/2);
     for (const auto& r : data) {
         bool less_equal = true;
         bool less = false;
@@ -29,7 +29,7 @@ std::vector<Point> getdominators(const std::vector<Point>& data, const Point& p)
 
 std::vector<Point> getdominees(const std::vector<Point>& data, const Point& p) {
     std::vector<Point> dominees;
-
+    dominees.reserve(data.size()/2);
     for (const auto& r : data) {
         bool greater_equal = true;
         bool greater = false;
@@ -54,7 +54,7 @@ std::vector<Point> getdominees(const std::vector<Point>& data, const Point& p) {
 
 std::vector<Point> getincomparables(const std::vector<Point>& data, const Point& p) {
     std::vector<Point> incomp;
-
+    incomp.reserve(data.size()/2);
     for (const auto& r : data) {
         bool less = false;
         bool greater = false;

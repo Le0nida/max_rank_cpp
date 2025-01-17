@@ -1,18 +1,4 @@
-//
-// Created by leona on 06/08/2024.
-//
-
 #include "maxrank.h"
-#include "query.h"
-#include "halfspace.h"
-#include "cell.h"
-#include "qtree.h"
-#include <algorithm>
-#include <cmath>
-#include <iostream>
-#include <limits>
-#include <string.h>
-#define MAXNOBINSTRINGTOCHECK 40000
 
 int numOfSubdivisions = 0;
 
@@ -20,78 +6,23 @@ int numOfSubdivisions = 0;
 HalfSpaceCache* halfspaceCache = nullptr;
 std::unordered_map<Point, long, PointHash> pointToHalfSpaceCache;
 
-std::vector<std::string> readCombinations(const int& dims) {
-    std::vector<std::string> comb;
-    FILE *fp;
-    char *token;
-    char m_separator[] = " \n\t";
-    char buf[512];
-    std::string FileName[] = {"../bin/Comb2D.txt", "../bin/Comb3D.txt", "../bin/Comb4D.txt", "../bin/Comb5D.txt", "../bin/Comb6D.txt", "../bin/Comb7D.txt",
-                         "../bin/Comb8D.txt", "../bin/Comb9D.txt"};
-    std::string strComb;
-    fp = fopen(FileName[dims - 2].c_str(), "r");
-    if (fp == NULL) {
-        std::cout << "error in fileopen!" << std::endl;
-        exit(0);
-    }
-    fgets(buf, 512, fp);
-    if (atoi(buf) != dims) {
-        std::cout << "Error! Dimensions are not equal!" << std::endl;
-        exit(0);
-    }
-    while (fgets(buf, 512, fp) != NULL) {
-        token = strtok(buf, m_separator);
-        //while (token != NULL){
-        //	token = strtok(NULL,m_separator);
-        //}
-        std::string strComb = token;
-        comb.push_back(strComb);
-    }
-    fclose(fp);
-    return comb;
-}
-int dims;
-float queryPlane[10];
-std::vector<std::string> Comb;
-
-bool MbrIsValid(const std::vector<std::array<double, 2>> &mbr) {
-    int numAbove = 0;
-    int numBelow = 0;
-    long int numOfVertices = Comb.size();
-
-    // Usa un array statico per coord invece di ricostruirlo dinamicamente ogni volta
-    std::vector<double> coord(dims, 0.0);
-
-    for (const auto &combination : Comb) {
-        float sum = 0.0; // Calcola sum durante la costruzione di coord
-        for (int j = 0; j < dims; ++j) {
-            coord[j] = (combination[j] == '0') ? mbr[j][0] : mbr[j][1];
-            sum += coord[j];
-        }
-
-        // Confronta sum con hs[dims]
-        if (sum > queryPlane[dims]) {
-            ++numAbove;
-            if (numAbove > 0 && numBelow > 0) break; // Early exit: l'MBR è intersecato
-        } else if (sum < queryPlane[dims]) {
-            ++numBelow;
-            if (numAbove > 0 && numBelow > 0) break; // Early exit: l'MBR è intersecato
-        }
-    }
-
-    // Restituisci il risultato in base ai conteggi
-    if (numAbove == numOfVertices) return false;
-    if (numBelow == numOfVertices) return true;
-    return false;
-}
-
 std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Point& p) {
-    dims = static_cast<int>(p.dims - 1);
+
+    // Reset global variables
+    halfspaceCache = nullptr;
+    pointToHalfSpaceCache.clear();
+
+    int dims = static_cast<int>(p.dims - 1);
     numOfSubdivisions = (int) pow(2.0, dims);
-    Comb = readCombinations(dims);
+    float queryPlane[10];
+    // Imposta queryPlane in modo fisso a 1
+    for (int i = 0; i < dims + 1; i++) {
+        queryPlane[i] = 1.0f;
+    }
+    std::vector<std::string> Comb = readCombinations(dims);
     for (int i = 0; i < dims + 1; i++) queryPlane[i] = 1;
 
-    QTree qt(dims, 10);
+    QTree qt(dims, maxCapacityQNode, maxLevelQTree);
     std::vector<Point> dominators = getdominators(data, p);
     std::vector<Point> incomp = getincomparables(data, p);
 
@@ -150,8 +81,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                 break;
             }
             //prune away leaf nodes that lie about hyperplane q_1+q2+...+q_d < 1;
-            if (!MbrIsValid(leaf->getMBR())) {
-                //std::cout << "Leaf node " << leaf->getNodeID() << " is pruned!" << std::endl;
+            if (!MbrIsValid(leaf->getMBR(), Comb, dims, queryPlane)) {
                 continue;
             }
 
@@ -175,7 +105,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                     }
                     break;
                 }
-                if (hamstrings.size() > MAXNOBINSTRINGTOCHECK) break;
+                if (hamstrings.size() > maxNoBinStringToCheck) break;
                 hamweight++;
             }
         }
@@ -293,6 +223,7 @@ std::pair<int, std::vector<Interval>> aa_2d(const std::vector<Point>& data, cons
         //   ma lì veniva gestito in modo un po’ diverso.
         //   Qui lo facciamo on-the-fly nel loop.
         std::vector<std::shared_ptr<HalfLine>> covering;
+        covering.reserve(intervals.size());
 
         // Prima passata: raccogliamo le halflines che hanno coversleft==true
         // e che hanno range.second < 0?
@@ -347,6 +278,7 @@ std::pair<int, std::vector<Interval>> aa_2d(const std::vector<Point>& data, cons
         //     e costruiamo la lista di halflines da "espandere"
         int new_singulars = 0;
         std::vector<std::shared_ptr<HalfLine>> to_expand;
+        to_expand.reserve(mincells.size());
         for (auto &mc : mincells) {
             if (mc.issingular()) {
                 mincells_singular.push_back(mc);

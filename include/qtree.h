@@ -10,7 +10,7 @@ extern int numOfSubdivisions;
 
 class QTree {
 public:
-    QTree(int dims, int maxhsnode);
+    QTree(int dims, int maxhsnode, int maxLevel);
     ~QTree();
 
     // Inserisce in modo tradizionale i halfspaces (incrementale)
@@ -30,7 +30,9 @@ public:
 
     QNode* getRoot() const { return root; }
     int getDims() const { return dims; }
-    int getMaxHSNode() const { return maxhsnode; }
+
+    int maxhsnode;  // soglia max halfspaces per splitting
+    int maxLevel;   // livello massimo
 
 private:
     QNode* createroot();
@@ -46,7 +48,7 @@ private:
 
 private:
     int dims;       // dimensioni
-    int maxhsnode;  // soglia max halfspaces per splitting
+
 
     // Radice "classica" (eventualmente usata)
     QNode* root;

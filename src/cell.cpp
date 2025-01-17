@@ -46,6 +46,7 @@ std::vector<std::string> genhammingstrings(int strlen, int weight)
     }
     else if (weight == 1)
     {
+        decstr.reserve(strlen);
         for (int b = 0; b < strlen; ++b)
         {
             decstr.push_back(1 << b);
@@ -53,6 +54,7 @@ std::vector<std::string> genhammingstrings(int strlen, int weight)
     }
     else
     {
+        //decstr.reserve(1 << strlen);
         int halfmax = (1 << (strlen - 1)) - 1;
         int curr_weight = 2;
         for (int b = 1; b < strlen; ++b)
@@ -155,7 +157,9 @@ LinprogResult* linprog_highs(const double* c, const double* A_ub, const double* 
     // Prepare A_ub in CSR format
     std::vector<int> A_start(num_row + 1);
     std::vector<int> A_index;
+    A_index.reserve(num_row * num_col);
     std::vector<double> A_value;
+    A_value.reserve(num_row * num_col);
 
     int count = 0;
     for (int i = 0; i < num_row; ++i)

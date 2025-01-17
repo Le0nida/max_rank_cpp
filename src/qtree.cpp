@@ -8,10 +8,8 @@
 #include <thread>    // std::thread::hardware_concurrency
 #include <algorithm> // std::min
 
-extern int numOfSubdivisions;
-
-QTree::QTree(int dims, int maxhsnode)
-    : dims(dims), maxhsnode(maxhsnode), root(nullptr)
+QTree::QTree(int dims, int maxhsnode, int maxLevel)
+    : dims(dims), maxhsnode(maxhsnode), root(nullptr), maxLevel(maxLevel)
 {
     // Calcoliamo 2^dims
     numOfSubdivisions = (1 << dims);
