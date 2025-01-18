@@ -1,17 +1,17 @@
 #include "qnode.h"
 #include "qtree.h"
-#include "geom.h"
-#include <iostream>
-#include <algorithm>
-#include <queue>
 
 static int normalizedMax = 1;
-extern int numOfSubdivisions;
 
-QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>>& mbr, int level)
+QNode::QNode(QTree* owner,
+             QNode* parent,
+             const std::vector<std::array<double,2>>& mbr,
+             const int level)
     : owner(owner),
       parent(parent),
-      children(), // vuoto, verrà riempito in splitNode() se serve
+      children(),
+      covered(),
+      halfspaces(),
       leafIndex(-1),
       mbr(mbr),
       norm(true),
@@ -21,13 +21,12 @@ QNode::QNode(QTree* owner, QNode* parent, const std::vector<std::array<double,2>
 {
 }
 
-void QNode::setLeaf(bool lf)
-{
-    if (leaf == lf) return;
+void QNode::setLeaf(const bool lf) {
     leaf = lf;
 }
+
 std::vector<long> QNode::getCovered() const {
-    // Se serve aggregare i covered dei parent:
+    // Combine local covered with ancestor's covered
     std::vector<long> out(covered.begin(), covered.end());
     const QNode* anc = parent;
     while (anc) {
@@ -37,15 +36,14 @@ std::vector<long> QNode::getCovered() const {
     return out;
 }
 
-PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& coeff, double known) {
+PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& coeff, const double known) const {
     if (mbr.empty()) {
         return PositionHS::OVERLAPPED;
     }
-    double minVal = 0.0;
-    double maxVal = 0.0;
-    size_t dims = coeff.size();
+    double minVal = 0.0, maxVal = 0.0;
+    size_t dcount = coeff.size();
 
-    for (size_t i = 0; i < dims; ++i) {
+    for (size_t i = 0; i < dcount; ++i) {
         double c = coeff[i];
         if (c >= 0) {
             minVal += c * mbr[i][0];
@@ -55,30 +53,30 @@ PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& coeff, double kn
             maxVal += c * mbr[i][0];
         }
     }
-    if (maxVal < known) return PositionHS::BELOW;
-    if (minVal > known) return PositionHS::ABOVE;
+    if (maxVal < known)  return PositionHS::BELOW;
+    if (minVal > known)  return PositionHS::ABOVE;
     return PositionHS::OVERLAPPED;
 }
 
-void QNode::insertHalfspace(long hsID) {
-    auto hs = halfspaceCache->get(hsID);
+void QNode::insertHalfspace(const long hsID) {
+    const auto hs = halfspaceCache->get(hsID);
     if (!hs) return;
 
     PositionHS pos = MbrVersusHalfSpace(hs->coeff, hs->known);
-
     switch (pos) {
         case PositionHS::BELOW:
+            // This halfspace is fully covering the node
             covered.push_back(hsID);
             break;
         case PositionHS::OVERLAPPED:
-            if (isLeaf()) {
+            // This halfspace partially covers the node
+            if (leaf) {
                 halfspaces.push_back(hsID);
-                // Se sforiamo la capacità => split
-                if ((int)halfspaces.size() > owner->maxhsnode && norm) {
-                    if (level < owner->maxLevel)
-                    {
+                // Check capacity -> split if we exceed maxhsnode
+                if (static_cast<int>(halfspaces.size()) > owner->maxhsnode && norm) {
+                    if (level < owner->maxLevel) {
                         splitNode();
-                        // Se abbiamo figli, ridistribuiamo
+                        // Redistribute existing halfspaces to children
                         if (!children.empty()) {
                             for (auto h : halfspaces) {
                                 for (auto* ch : children) {
@@ -91,78 +89,77 @@ void QNode::insertHalfspace(long hsID) {
                     }
                 }
             } else {
-                // Propaghiamo
+                // Propagate to children
                 for (auto* ch : children) {
                     if (ch) ch->insertHalfspace(hsID);
                 }
             }
             break;
         case PositionHS::ABOVE:
-            // Non lo gestiamo
+            // This node is completely outside the halfspace -> do nothing
             break;
     }
 }
 
 void QNode::insertHalfspaces(const std::vector<long>& new_halfspaces) {
-    for (auto id : new_halfspaces) {
+    for (const auto id : new_halfspaces) {
         insertHalfspace(id);
     }
 }
 
 void QNode::splitNode() {
-
-    if (level == owner->maxLevel)
-        return;
-
-    // Già controllato da caller se n>maxCapacity, ma ricontrolliamo
-    if (!norm) return;
-
-    size_t totalHS = halfspaces.size() + covered.size();
-    if (totalHS < (size_t)owner->maxhsnode) {
+    // Do not split if at max level or not valid
+    if (level == owner->maxLevel || !norm) {
         return;
     }
 
-    // Diventiamo non-foglia
-    setLeaf(false);
+    // Check total halfspaces (covered + halfspaces)
+    size_t totalHS = halfspaces.size() + covered.size();
+    if (totalHS < (size_t)owner->maxhsnode) return;
 
-    // Preallochiamo vector di figli
+    // Become an internal node
+    setLeaf(false);
     children.resize(numOfSubdivisions, nullptr);
 
-    // Generiamo i MBR
-    size_t dims = mbr.size();
+    // Subdivide MBR
+    size_t dcount = mbr.size();
     for (int mask = 0; mask < numOfSubdivisions; ++mask) {
-        std::vector<std::array<double,2>> child_mbr(dims);
-        for (size_t d = 0; d < dims; d++) {
-            double mid = 0.5*(mbr[d][0] + mbr[d][1]);
+        std::vector<std::array<double,2>> child_mbr(dcount);
+        for (size_t d = 0; d < dcount; d++) {
+            double mid = 0.5 * (mbr[d][0] + mbr[d][1]);
             if (mask & (1 << d)) {
-                child_mbr[d] = {mid, mbr[d][1]};
+                child_mbr[d] = { mid, mbr[d][1] };
             } else {
-                child_mbr[d] = {mbr[d][0], mid};
+                child_mbr[d] = { mbr[d][0], mid };
             }
         }
-        // Creo QNode figlio
-        QNode* child = new QNode(owner, this, child_mbr, level + 1);
+        // Create the child node
+        auto* child = new QNode(owner, this, child_mbr, level + 1);
+
+        // Validate the child node
         if (child->checkNodeValidity()) {
-            child->setNorm(true);
+            child->norm = true;
             children[mask] = child;
         } else {
-            child->setNorm(false);
-            delete child; // niente ricorsione, è un singolo new
+            child->norm = false;
+            delete child;
             children[mask] = nullptr;
         }
     }
 }
 
-bool QNode::checkNodeValidity() {
-    size_t dims = mbr.size();
-    size_t num_vertices = (1 << dims);
+bool QNode::checkNodeValidity() const {
+    // For each corner in [min,max], check if sum of coordinates <= normalizedMax
+    size_t dcount = mbr.size();
+    size_t corners = (1 << dcount);
 
-    for (size_t i = 0; i < num_vertices; ++i) {
+    for (size_t i = 0; i < corners; ++i) {
         double sum = 0.0;
-        for (size_t d = 0; d < dims; d++) {
+        for (size_t d = 0; d < dcount; d++) {
             double coord = (i & (1 << d)) ? mbr[d][1] : mbr[d][0];
             sum += coord;
         }
+        // If at least one corner is inside normalized range, consider it valid
         if (sum <= normalizedMax) {
             return true;
         }

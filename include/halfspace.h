@@ -1,143 +1,198 @@
-//
-// Created by leona on 01/08/2024.
-//
-
 #ifndef HALFSPACE_H
 #define HALFSPACE_H
 
 #include <memory>
 #include <unordered_map>
-#include <utility>
 #include <vector>
+#include <fstream>
 #include "geom.h"
 
+/**
+ * \enum Position
+ * \brief Spatial position of a point relative to a halfspace.
+ */
 enum Position {
-    POS_IN = 1,
-    POS_OUT = -1,
-    POS_ON = 0
+    POS_IN  = 1,  ///< Point is inside or below the halfspace
+    POS_OUT = -1, ///< Point is outside or above
+    POS_ON  = 0   ///< Point is exactly on the boundary
 };
 
+/**
+ * \enum Arrangement
+ * \brief Describes how a halfspace or halfline is marked during expansions.
+ */
 enum class Arrangement {
-    SINGULAR = 0,
-    AUGMENTED = 1
+    SINGULAR   = 0, ///< Marked as finalized/expanded
+    AUGMENTED  = 1  ///< Still subject to further expansion
 };
 
-
+/**
+ * \class HalfLine
+ * \brief In 2D, represents a line y = m*x + q from a pivot point.
+ */
 class HalfLine {
 public:
-    HalfLine(const Point& pnt);
-    double get_y(double x) const;
+    /**
+     * \brief Constructs a halfline from a given point (2D).
+     * \param pnt The reference Point with x,y coordinates.
+     */
+    explicit HalfLine(const Point& pnt);
 
-    Point pnt;
-    double m;
-    double q;
-    Arrangement arr;
-    int dims;
+    /**
+     * \brief Computes y = m*x + q
+     * \param x The x-coordinate
+     * \return The corresponding y-value on this halfline.
+     */
+    [[nodiscard]] double get_y(double x) const;
+
+    Point pnt;           ///< Reference point used to build the line
+    double m;            ///< Slope
+    double q;            ///< Intercept
+    Arrangement arr;     ///< Indicates if it's SINGULAR or AUGMENTED
+    int dims;            ///< Typically 2 for 2D lines
 };
 
+/**
+ * \class HalfSpace
+ * \brief Represents a linear halfspace in N dimensions.
+ */
 class HalfSpace {
 public:
-    HalfSpace(long int pntID, const std::vector<double>& coeff, double known);
+    /**
+     * \brief Constructs a halfspace from an ID, coefficients, and known term.
+     * \param pntID Identifier for the halfspace (often the point ID).
+     * \param coeff The vector of coefficients in the linear inequality.
+     * \param known The RHS constant.
+     */
+    HalfSpace(long int pntID,
+              const std::vector<double>& coeff,
+              double known);
+
+    /**
+     * \brief Default constructor (invalid halfspace).
+     */
     HalfSpace();
 
-    long int pntID;
-    std::vector<double> coeff;
-    double known;
-    Arrangement arr;
-    int dims;
+    long int pntID;            ///< Associated point ID
+    std::vector<double> coeff; ///< Coefficients in each dimension
+    double known;              ///< RHS constant
+    Arrangement arr;           ///< Mark as AUGMENTED or SINGULAR
+    int dims;                  ///< Number of dimensions
 
+    /**
+     * \brief Equality operator
+     */
     bool operator==(const HalfSpace& other) const;
-
-    // Serializza l'oggetto HalfSpace su disco
-    void saveToDisk(std::ofstream& out) const {
-        out.write(reinterpret_cast<const char*>(&pntID), sizeof(pntID));
-
-        // Serializza i coefficienti
-        size_t coeffSize = coeff.size();
-        out.write(reinterpret_cast<const char*>(&coeffSize), sizeof(coeffSize));
-        out.write(reinterpret_cast<const char*>(coeff.data()), coeffSize * sizeof(double));
-
-        // Serializza altri membri
-        out.write(reinterpret_cast<const char*>(&known), sizeof(known));
-        out.write(reinterpret_cast<const char*>(&arr), sizeof(arr));
-        out.write(reinterpret_cast<const char*>(&dims), sizeof(dims));
-    }
-
-    // Carica l'oggetto HalfSpace da disco
-    void loadFromDisk(std::ifstream& in) {
-        in.read(reinterpret_cast<char*>(&pntID), sizeof(pntID));
-
-        // Carica i coefficienti
-        size_t coeffSize;
-        in.read(reinterpret_cast<char*>(&coeffSize), sizeof(coeffSize));
-        coeff.resize(coeffSize);
-        in.read(reinterpret_cast<char*>(coeff.data()), coeffSize * sizeof(double));
-
-        // Carica altri membri
-        in.read(reinterpret_cast<char*>(&known), sizeof(known));
-        in.read(reinterpret_cast<char*>(&arr), sizeof(arr));
-        in.read(reinterpret_cast<char*>(&dims), sizeof(dims));
-    }
 };
 
+/**
+ * \brief Finds the intersection between two 2D halflines r and s.
+ * \return Point with intersection coords, or (inf, inf) if parallel.
+ */
 Point find_halflines_intersection(const HalfLine& r, const HalfLine& s);
-Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfspace);
-std::vector<long> genhalfspaces(const Point& p, const std::vector<Point>& records);
 
-// Struttura della cache globale per memorizzare gli half-spaces
+/**
+ * \brief Checks the position of a Point relative to a HalfSpace.
+ * \param point The point to test.
+ * \param halfspace The halfspace.
+ * \return POS_IN, POS_OUT, or POS_ON.
+ */
+Position find_pointhalfspace_position(const Point& point, const HalfSpace& halfspace);
+
+/**
+ * \brief Generates halfspaces associated with point p for each record in 'records'.
+ * \param p       Reference point.
+ * \param records A list of points to convert.
+ * \return A vector of halfspace IDs.
+ */
+std::vector<long> genhalfspaces(const Point& p,
+                                const std::vector<Point>& records);
+
+/**
+ * \class HalfSpaceCache
+ * \brief A global cache storing HalfSpace objects by their IDs.
+ */
 class HalfSpaceCache {
 public:
-
+    /**
+     * \brief Constructor preallocating a given number of entries.
+     * \param cacheSize Expected maximum number of halfspaces.
+     */
     explicit HalfSpaceCache(size_t cacheSize) {
-        // Prealloca la dimensione della cache, in base al numero di record (dimensione fissa)
         cache.reserve(cacheSize);
     }
 
-    // Inserisce un nuovo halfspace nella cache
+    /**
+     * \brief Inserts or updates a halfspace with the given ID.
+     * \param id         Halfspace ID
+     * \param halfspace  Shared pointer to the HalfSpace.
+     */
     void insert(long id, std::shared_ptr<HalfSpace> halfspace) {
         cache[id] = std::move(halfspace);
     }
 
-    // Restituisce il puntatore all'halfspace dato l'ID
+    /**
+     * \brief Retrieves a shared pointer to the HalfSpace with the given ID.
+     * \param id The halfspace ID.
+     * \return A valid shared_ptr if found, or null if not found.
+     */
     std::shared_ptr<HalfSpace> get(long id) const {
         auto it = cache.find(id);
         if (it != cache.end()) {
             return it->second;
         }
-        return nullptr;  // Se l'ID non è trovato
+        return nullptr;
     }
 
-    // Controlla se un ID esiste nella cache
+    /**
+     * \brief Checks if a halfspace with the given ID is present in the cache.
+     * \param id The halfspace ID.
+     * \return True if found, otherwise false.
+     */
     bool contains(long id) const {
-        return cache.find(id) != cache.end();
+        return (cache.find(id) != cache.end());
     }
 
 private:
-    std::unordered_map<long, std::shared_ptr<HalfSpace>> cache;  // Cache ordinata per ID
+    /**
+     * \brief Internal storage of <halfspaceID, pointer> pairs.
+     */
+    std::unordered_map<long, std::shared_ptr<HalfSpace>> cache;
 };
 
+/**
+ * \struct PointHash
+ * \brief Hash functor for using Point as a key in std::unordered_map.
+ */
 struct PointHash {
     std::size_t operator()(const Point& p) const {
         std::size_t seed = 0;
         for (double coord : p.coord) {
+            // Combine using a standard "hash mix" formula
             seed ^= std::hash<double>{}(coord) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
         return seed;
     }
 };
 
-
-// Cache globale degli half-spaces con dimensione fissa
+/**
+ * \brief Global pointer to the halfspace cache. Initialize via initializeCache().
+ */
 extern HalfSpaceCache* halfspaceCache;
 
+/**
+ * \brief Initializes halfspaceCache with a fixed size.
+ * \param cacheSize The maximum number of halfspaces to store.
+ */
 static void initializeCache(const size_t cacheSize) {
-    if (halfspaceCache == nullptr) {
-        // Inizializza la cache con la dimensione fissa
+    if (!halfspaceCache) {
         halfspaceCache = new HalfSpaceCache(cacheSize);
     }
 }
 
-// Cache per i punti già convertiti in half-space, usando unordered_map per efficienza
+/**
+ * \brief Maps a Point to its halfspace ID if already converted.
+ */
 extern std::unordered_map<Point, long, PointHash> pointToHalfSpaceCache;
 
-#endif //HALFSPACE_H
+#endif // HALFSPACE_H

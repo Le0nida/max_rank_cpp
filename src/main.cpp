@@ -14,11 +14,125 @@
 
 using namespace std;
 
-// Default parameters
+/**
+ * Global defaults for optional parameters.
+ */
 int limitHamWeight = 999;
 int maxLevelQTree = 99;
 int maxCapacityQNode = 10;
 int maxNoBinStringToCheck = 999999;
+int halfspacesLengthLimit = 21;
+
+/**
+ * \brief Parses command-line flags of the form --flag=value
+ *        and updates the global variables accordingly.
+ *
+ * \param argc Number of CLI arguments
+ * \param argv Array of argument strings
+ */
+void parseArgs(int argc, char* argv[]) {
+    // Required parameters come first: datafile, numRecords, dimensions, numQueries, queryfile
+    // We parse them by position, then parse optional flags from index 6 onward.
+    // e.g. --limit-ham-weight=500
+    for (int i = 6; i < argc; i++) {
+        std::string arg = argv[i];
+        // Identify flags of the form "--key=value"
+        if (arg.rfind("--", 0) == 0) {
+            // Find '=' sign
+            size_t eqPos = arg.find('=');
+            if (eqPos == std::string::npos) {
+                std::cerr << "Ignoring invalid flag: " << arg << std::endl;
+                continue;
+            }
+            std::string key = arg.substr(2, eqPos - 2);    // e.g. "limit-ham-weight"
+            std::string val = arg.substr(eqPos + 1);       // e.g. "500"
+
+            try {
+                if (key == "limit-ham-weight") {
+                    limitHamWeight = std::stoi(val);
+                } else if (key == "max-level-qtree") {
+                    maxLevelQTree = std::stoi(val);
+                } else if (key == "max-capacity-qnode") {
+                    maxCapacityQNode = std::stoi(val);
+                } else if (key == "max-nobinstring-to-check") {
+                    maxNoBinStringToCheck = std::stoi(val);
+                } else if (key == "halfspaces-length-limit") {
+                    halfspacesLengthLimit = std::stoi(val);
+                } else {
+                    std::cerr << "Unknown parameter: --" << key << std::endl;
+                }
+            } catch (const std::invalid_argument&) {
+                std::cerr << "Invalid integer value in flag: " << arg << std::endl;
+            } catch (const std::out_of_range&) {
+                std::cerr << "Out-of-range integer value in flag: " << arg << std::endl;
+            }
+        } else {
+            std::cerr << "Ignoring unrecognized argument: " << arg << std::endl;
+        }
+    }
+
+    // Validate optional parameters
+    if (limitHamWeight < 0 || maxLevelQTree < 1 ||
+        maxCapacityQNode < 1 || maxNoBinStringToCheck < 1 ||
+        halfspacesLengthLimit < 1)
+    {
+        throw std::runtime_error("One or more optional parameters are invalid (<=0).");
+    }
+}
+
+/**
+ * \brief (Optional) Reads a config file to set the global parameters.
+ *        Format: Each line as key=value (like limitHamWeight=999).
+ *
+ * \param configFile Path to the configuration file.
+ */
+void parseConfigFile(const std::string& configFile) {
+    std::ifstream in(configFile);
+    if (!in.is_open()) {
+        throw std::runtime_error("Could not open config file: " + configFile);
+    }
+
+    std::string line;
+    while (std::getline(in, line)) {
+        // skip empty lines or comments
+        if (line.empty() || line[0] == '#') continue;
+        size_t eqPos = line.find('=');
+        if (eqPos == std::string::npos) continue;
+
+        std::string key = line.substr(0, eqPos);
+        std::string val = line.substr(eqPos + 1);
+
+        try {
+            if (key == "limitHamWeight") {
+                limitHamWeight = std::stoi(val);
+            } else if (key == "maxLevelQTree") {
+                maxLevelQTree = std::stoi(val);
+            } else if (key == "maxCapacityQNode") {
+                maxCapacityQNode = std::stoi(val);
+            } else if (key == "maxNoBinStringToCheck") {
+                maxNoBinStringToCheck = std::stoi(val);
+            } else if (key == "halfspacesLengthLimit") {
+                halfspacesLengthLimit = std::stoi(val);
+            } else {
+                std::cerr << "Unknown config key: " << key << std::endl;
+            }
+        } catch (const std::invalid_argument&) {
+            std::cerr << "Invalid integer value for key " << key << " in config file.\n";
+        } catch (const std::out_of_range&) {
+            std::cerr << "Out-of-range integer value for key " << key << " in config file.\n";
+        }
+    }
+
+    in.close();
+
+    // Validate again
+    if (limitHamWeight < 0 || maxLevelQTree < 1 ||
+        maxCapacityQNode < 1 || maxNoBinStringToCheck < 1 ||
+        halfspacesLengthLimit < 1)
+    {
+        throw std::runtime_error("Invalid config file parameter (<=0).");
+    }
+}
 
 int main(const int argc, char* argv[]) {
 
@@ -29,54 +143,57 @@ int main(const int argc, char* argv[]) {
     if (argc < 6) {
         std::cerr << "Usage: " << argv[0]
                   << " <datafile> <numRecords> <dimensions> <numQueries> <queryfile>\n"
-                  << " [limitHamWeight] [maxLevelQTree] [maxCapacityQNode] [maxNoBinStringToCheck]\n\n"
-                  << "   datafile             = CSV file containing data\n"
-                  << "   numRecords           = Number of expected records\n"
-                  << "   dimensions           = Number of dimensions in the dataset\n"
-                  << "   numQueries           = Number of queries\n"
-                  << "   queryfile            = File containing query list\n\n"
-                  << "   limitHamWeight       (optional, default=999)\n"
-                  << "   maxLevelQTree        (optional, default=8)\n"
-                  << "   maxCapacityQNode     (optional, default=20)\n"
-                  << "   maxNoBinStringToCheck (optional, default=999999)\n"
+                  << " [OPTIONAL: 6th param is a config file or CLI flags like --limit-ham-weight=999]\n\n"
+                  << "Example flags:\n"
+                  << "  --limit-ham-weight=999\n"
+                  << "  --max-level-qtree=8\n"
+                  << "  --max-capacity-qnode=20\n"
+                  << "  --max-nobinstring-to-check=999999\n"
+                  << "  --halfspaces-length-limit=21\n"
                   << std::endl;
         return 1;
     }
 
-    // Read required parameters
-    const string datafile    = argv[1];
-    const string queryfile   = argv[5];
-    int numRecords;
-    int dimensions;
-    int numQueries;
+    // Required parameters
+    std::string datafile   = argv[1];
+    std::string queryfile  = argv[5];
+    int numRecords         = 0;
+    int dimensions         = 0;
+    int numQueries         = 0;
 
     try {
-        numRecords = stoi(argv[2]);
-        dimensions = stoi(argv[3]);
-        numQueries = stoi(argv[4]);
-
+        numRecords = std::stoi(argv[2]);
+        dimensions = std::stoi(argv[3]);
+        numQueries = std::stoi(argv[4]);
         if (numRecords <= 0 || dimensions <= 0 || numQueries <= 0) {
-            throw invalid_argument("Input numbers must be positive integers.");
+            throw std::invalid_argument("Input numbers must be positive integers.");
         }
-    } catch (const invalid_argument& e) {
-        cerr << "Invalid input: " << e.what() << endl;
-        return 1;
-    } catch (const out_of_range& e) {
-        cerr << "Input number out of range: " << e.what() << endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Invalid input for required parameters: " << e.what() << std::endl;
         return 1;
     }
 
-    // Read optional parameters if provided
-    if (argc > 6) limitHamWeight       = stoi(argv[6]);
-    if (argc > 7) maxLevelQTree    = stoi(argv[7]);
-    if (argc > 8) maxCapacityQNode = stoi(argv[8]);
-    if (argc > 9) maxNoBinStringToCheck  = stoi(argv[9]);
+    // 6th parameter could be a config file or a series of --flag=value arguments
+    if (argc >= 6) {
+        // If the 6th parameter does not start with "--", treat it as a config file
+        // else parse it as a flag (or series of flags).
+        std::string arg6 = argv[6];
+        if (!arg6.empty() && arg6.rfind("--", 0) != 0) {
+            // Attempt to parse as config file
+            try {
+                parseConfigFile(arg6);
+            } catch (const std::exception& e) {
+                std::cerr << "Warning: " << e.what() << "\n"
+                          << "Attempting to parse other flags in argv...\n";
+            }
+        }
+        // Now parse any remaining arguments as flags
+        parseArgs(argc, argv);
+    }
 
-    // Validate optional parameters
-    if (limitHamWeight < 0 || maxLevelQTree < 1 || maxCapacityQNode < 1 || maxNoBinStringToCheck < 1)
-    {
-        cerr << "One or more input parameters are invalid (<=0)." << endl;
-        return 1;
+    // If no 6th param but we have others, parse them
+    else if (argc > 6) {
+        parseArgs(argc, argv);
     }
 
     // Load dataset

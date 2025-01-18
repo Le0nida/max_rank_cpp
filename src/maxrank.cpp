@@ -58,7 +58,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         //std::cout << "> " << new_leaves.size() << " total leaves" << std::endl;
         qt.updateAllOrders();
 
-        std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->getOrder() < b->getOrder(); });
+        std::sort(new_leaves.begin(), new_leaves.end(), [](QNode* a, QNode* b) { return a->order < b->order; });
 
         return std::make_pair(new_sky, new_leaves);
     };
@@ -76,19 +76,19 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         std::vector<Cell> mincells;
 
         for (auto leaf : leaves) {
-            int leaf_order = static_cast<int>(leaf->getOrder());
+            int leaf_order = static_cast<int>(leaf->order);
             if (leaf_order > minorder || leaf_order > minorder_singular) {
                 break;
             }
             //prune away leaf nodes that lie about hyperplane q_1+q2+...+q_d < 1;
-            if (!MbrIsValid(leaf->getMBR(), Comb, dims, queryPlane)) {
+            if (!MbrIsValid(leaf->mbr, Comb, dims, queryPlane)) {
                 continue;
             }
 
             int hamweight = 0;
-            while (hamweight <= leaf->getHalfspaces().size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
+            while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
                 //std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->getHalfspaces().size();
-                std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->getHalfspaces().size()), hamweight);
+                std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight);
                 //std::cout << ", Hamstring " << hamstrings.size();
                 std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
                 //std::cout << ", Celle " << cells.size() << std::endl;
@@ -119,8 +119,8 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                 mincells_singular.push_back(cell);
                 new_singulars++;
             } else {
-                for (auto k : cell.covered) {
-                    auto hs = halfspaceCache->get(k);
+                for (const auto k : cell.covered) {
+                    const auto hs = halfspaceCache->get(k);
                     if (hs->arr == Arrangement::AUGMENTED && std::find(to_expand.begin(), to_expand.end(), hs) == to_expand.end()) {
                         to_expand.push_back(hs);
                     }

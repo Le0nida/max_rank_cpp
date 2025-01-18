@@ -1,69 +1,59 @@
 #include "qtree.h"
-#include "qnode.h"
-#include "geom.h"
-#include "halfspace.h"
-#include <iostream>
-#include <queue>
-#include <future>
-#include <thread>    // std::thread::hardware_concurrency
-#include <algorithm> // std::min
 
-QTree::QTree(int dims, int maxhsnode, int maxLevel)
-    : dims(dims), maxhsnode(maxhsnode), root(nullptr), maxLevel(maxLevel)
+QTree::QTree(const int dims, const int maxhsnode, const int maxLevel)
+    : dims(dims),
+      maxhsnode(maxhsnode),
+      maxLevel(maxLevel),
+      root(nullptr)
 {
-    // Calcoliamo 2^dims
-    numOfSubdivisions = (1 << dims);
 
-    // Creiamo la root "classica"
+    // Create the classical root covering [0,1]^dims
     root = createroot();
 
-    // Pre-calcoliamo i subMBR [0,1]^dims una volta sola
-    std::vector<std::array<double,2>> globalMBR(dims, {0.0, 1.0});
+    // Precompute sub-MBRs for macro-split
+    const std::vector<std::array<double,2>> globalMBR(dims, {0.0, 1.0});
     precomputedSubMBRs = macroSplitMBR(globalMBR);
 
-    // Inizializziamo macroRoots
+    // Prepare macroRoots, one for each sub-MBR
     macroRoots.resize(numOfSubdivisions, nullptr);
 }
 
 QTree::~QTree() {
     destroyAllNodes();
-    root = nullptr;
 }
 
-// Crea una root con MBR unitaria [0,1]^dims
 QNode* QTree::createroot() {
-    std::vector<std::array<double,2>> mbr(dims, {0.0, 1.0});
-    QNode* r = new QNode(this, nullptr, mbr, 0);
-    return r;
+    // Root node with MBR = [0,1]^dims
+    const std::vector<std::array<double,2>> mbr(dims, {0.0, 1.0});
+    return new QNode(this, nullptr, mbr, 0);
 }
 
-// Distrugge root e tutti i macroRoots
 void QTree::destroyAllNodes() {
+    // 1) Destroy the classical root subtree
     if (root) {
-        // BFS su root
-        std::queue<QNode*> Q;
-        Q.push(root);
-        while (!Q.empty()) {
-            QNode* current = Q.front();
-            Q.pop();
+        std::queue<QNode*> q;
+        q.push(root);
+        while (!q.empty()) {
+            QNode* current = q.front();
+            q.pop();
             for (auto child : current->children) {
-                if (child) Q.push(child);
+                if (child) q.push(child);
             }
             delete current;
         }
-        leaves.clear();
         root = nullptr;
     }
-    // Distruggi i subroot se esistono
+
+    // 2) Destroy each macro-root subtree
     for (auto sr : macroRoots) {
         if (!sr) continue;
-        std::queue<QNode*> Q;
-        Q.push(sr);
-        while (!Q.empty()) {
-            QNode* current = Q.front();
-            Q.pop();
+        std::queue<QNode*> q;
+        q.push(sr);
+        while (!q.empty()) {
+            QNode* current = q.front();
+            q.pop();
             for (auto child : current->children) {
-                if (child) Q.push(child);
+                if (child) q.push(child);
             }
             delete current;
         }
@@ -71,223 +61,196 @@ void QTree::destroyAllNodes() {
     macroRoots.clear();
 }
 
-// Inserimento incrementale classico
-void QTree::inserthalfspaces(const std::vector<long int>& halfspaces) {
-    if (halfspaces.empty() || !root) return;
-    root->insertHalfspaces(halfspaces);
+std::vector< std::vector<std::array<double,2>> >
+QTree::macroSplitMBR(const std::vector<std::array<double,2>>& globalMBR) const {
+    // Each bit in 'mask' picks lower or upper half for each dimension
+    std::vector< std::vector<std::array<double,2>> > result(1 << dims);
+
+    for (int mask = 0; mask < (1 << dims); mask++) {
+        result[mask].resize(dims);
+        double mid;
+        for (int d = 0; d < dims; d++) {
+            mid = 0.5 * (globalMBR[d][0] + globalMBR[d][1]);
+            if (mask & (1 << d)) {
+                result[mask][d] = { mid, globalMBR[d][1] };
+            } else {
+                result[mask][d] = { globalMBR[d][0], mid };
+            }
+        }
+    }
+    return result;
 }
 
-/**
- * Inserimento parallelo via macro-split:
- *  1) Distribuzione parallela dei nuovi halfspaces nei subMBR
- *  2) Creazione/aggiornamento parallelo dei relativi sotto-alberi
- */
+QNode* QTree::buildSubtree(const std::vector<std::array<double,2>>& subMBR,
+                           const std::vector<long>& subHS) const {
+    // Create a new root node for this subMBR
+    auto* rootNode = new QNode(const_cast<QTree*>(this), nullptr, subMBR, 1);
+    // Insert halfspaces incrementally
+    rootNode->insertHalfspaces(subHS);
+    return rootNode;
+}
+
 void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) {
     if (halfspaces.empty()) return;
 
-    // Preleviamo i subMBR pre-calcolati
-    const auto& subMBRs = precomputedSubMBRs;
-    const int nSub = static_cast<int>(subMBRs.size());
-
-    // Vettore di vettori su cui accumulare gli halfspaces per ogni subMBR
-    // Inizializziamo già alla dimensione nSub per evitare push_back su subHS
+    // Prepare containers
+    int nSub = static_cast<int>(precomputedSubMBRs.size());
     std::vector< std::vector<long> > subHS(nSub);
 
-    // 1) PARALLELIZZIAMO la distribuzione: suddividiamo i halfspaces in "chunk"
-    //    e in ciascun chunk distribuiamo i halfspaces nei subMBR (in parallelo).
-    const size_t totalHS = halfspaces.size();
-    const unsigned int hwThreads = std::max(1U, std::thread::hardware_concurrency());
-    const size_t chunkSize = (totalHS + hwThreads - 1) / hwThreads;
-        // divisione "ceil" tra i thread
+    // Multi-threaded distribution
+    size_t totalHS = halfspaces.size();
+    unsigned int hwThreads = std::max(1U, std::thread::hardware_concurrency());
+    size_t chunkSize = (totalHS + hwThreads - 1) / hwThreads;
 
-    // Vettore "parziale" di dimensione #thread, ognuno contiene un subHS "locale"
-    // da combinare alla fine
-    std::vector< std::vector< std::vector<long> > > partialRes(hwThreads,
-                                   std::vector<std::vector<long>>(nSub));
+    // Partial results per thread
+    std::vector<std::vector<std::vector<long>>> partialRes(
+        hwThreads, std::vector<std::vector<long>>(nSub)
+    );
 
+    // 1) Distribute halfspaces among subMBRs in parallel
     std::vector<std::future<void>> distributionFutures;
     distributionFutures.reserve(hwThreads);
 
     for (unsigned int t = 0; t < hwThreads; t++) {
-        const size_t start = t * chunkSize;
-        if (start >= totalHS) break; // niente più chunk
-        const size_t end = std::min(start + chunkSize, totalHS);
+        size_t start = t * chunkSize;
+        if (start >= totalHS) break;
+        size_t end = std::min(start + chunkSize, totalHS);
 
-        // Avviamo un task asincrono per l'intervallo [start, end)
+        // Parallel task: assign halfspaces to subMBRs
         distributionFutures.push_back(std::async(std::launch::async,
-            [this, &halfspaces, &subMBRs, start, end, &partialRes, t]()
+            [this, &halfspaces, start, end, &partialRes, t, nSub]()
         {
             for (size_t idx = start; idx < end; ++idx) {
                 long hsID = halfspaces[idx];
-                auto hsPtr = halfspaceCache->get(hsID);
+                const auto hsPtr = halfspaceCache->get(hsID);
                 if (!hsPtr) continue;
 
-                const double known = hsPtr->known;
-                // Ciclo su i subMBR
-                const int localNSub = (int)subMBRs.size();
-                for (int i = 0; i < localNSub; i++) {
+                double known = hsPtr->known;
+                const auto& cVec = hsPtr->coeff;
+                // Evaluate each precomputed subMBR
+                for (int i = 0; i < nSub; i++) {
                     double minVal = 0, maxVal = 0;
-                    // Sfruttiamo i coefficienti
-                    const auto& cVec = hsPtr->coeff;
                     for (size_t d = 0; d < cVec.size(); d++) {
                         double c = cVec[d];
-                        // Più veloce di if-else? Forse un if qui è meglio di branching inevitabile
                         if (c >= 0) {
-                            minVal += c * subMBRs[i][d][0];
-                            maxVal += c * subMBRs[i][d][1];
+                            minVal += c * precomputedSubMBRs[i][d][0];
+                            maxVal += c * precomputedSubMBRs[i][d][1];
                         } else {
-                            minVal += c * subMBRs[i][d][1];
-                            maxVal += c * subMBRs[i][d][0];
+                            minVal += c * precomputedSubMBRs[i][d][1];
+                            maxVal += c * precomputedSubMBRs[i][d][0];
                         }
                     }
-                    // Classica logica di Overlapped/Below/Above
-                    if (maxVal < known) {
-                        // BELOW
-                        partialRes[t][i].push_back(hsID);
-                    } else if (minVal <= known) {
-                        // Overlapped
+                    // Classical Overlapped/Below/Above logic
+                    if (maxVal < known || minVal <= known) {
+                        // Entirely below or Overlapped => add it
                         partialRes[t][i].push_back(hsID);
                     }
-                    // Se minVal > known => Above => ignoro
                 }
             }
         }));
     }
 
-    // Attendo la fine di tutti i task di distribuzione
+    // Wait for distribution tasks to finish
     for (auto &f : distributionFutures) {
         f.get();
     }
 
-    // 1b) Combiniamo i risultati parziali in subHS[i]
+    // Combine partial results
     for (unsigned int t = 0; t < hwThreads; t++) {
         for (int i = 0; i < nSub; i++) {
-            auto &localVec = partialRes[t][i];
-            if (!localVec.empty()) {
-                // Evitiamo troppi insert uno a uno
-                subHS[i].insert(subHS[i].end(), localVec.begin(), localVec.end());
+            if (!partialRes[t][i].empty()) {
+                subHS[i].insert(subHS[i].end(),
+                                partialRes[t][i].begin(),
+                                partialRes[t][i].end());
             }
         }
     }
 
-    // 2) PARALLELIZZIAMO la costruzione/aggiornamento dei sub-root
-    //    (logica identica a prima, ma a chunk di subMBR)
+    // 2) Build/update sub-roots in parallel
     std::vector<std::future<void>> buildFutures;
     buildFutures.reserve(nSub);
 
     for (int i = 0; i < nSub; i++) {
-        if (subHS[i].empty()) {
-            // Nessun halfspace per questa partizione => niente da fare
-            continue;
-        }
-        // Avviamo in parallelo la build o l'aggiornamento
-        buildFutures.push_back(std::async(std::launch::async, [this, i, &subHS, &subMBRs]() {
+        if (subHS[i].empty()) continue;
+
+        buildFutures.push_back(std::async(std::launch::async,
+            [this, i, &subHS]()
+        {
             if (!macroRoots[i]) {
-                // Non esiste => costruiamo
-                macroRoots[i] = buildSubtree(subMBRs[i], subHS[i]);
+                // Create a new sub-root
+                macroRoots[i] = buildSubtree(precomputedSubMBRs[i], subHS[i]);
             } else {
-                // Esiste => aggiorniamo con i nuovi halfspaces
+                // Update existing sub-root
                 macroRoots[i]->insertHalfspaces(subHS[i]);
             }
         }));
     }
 
-    // Aspettiamo tutti i sub-root
+    // Wait for all sub-root builds
     for (auto &f : buildFutures) {
         f.get();
     }
 }
 
-// Pre-calcola le 2^dims suddivisioni di [0,1]^dims
-std::vector< std::vector<std::array<double,2>> >
-QTree::macroSplitMBR(const std::vector<std::array<double,2>>& globalMBR) const
-{
-    std::vector< std::vector<std::array<double,2>> > ret;
-    ret.resize( (1 << dims) );
-
-    for (int mask = 0; mask < (1 << dims); mask++) {
-        ret[mask].resize(dims);
-        for (int d = 0; d < dims; d++) {
-            double mid = 0.5 * (globalMBR[d][0] + globalMBR[d][1]);
-            if (mask & (1 << d)) {
-                ret[mask][d] = { mid, globalMBR[d][1] };
-            } else {
-                ret[mask][d] = { globalMBR[d][0], mid };
-            }
-        }
-    }
-    return ret;
-}
-
-// Crea un sotto-albero con la logica incrementale
-QNode* QTree::buildSubtree(const std::vector<std::array<double,2>>& subMBR,
-                           const std::vector<long>& subHS) const
-{
-    // Creiamo un QNode radice di sub-albero
-    QNode* rootNode = new QNode(const_cast<QTree*>(this), nullptr, subMBR, 1);
-    // Inserimento incrementale
-    rootNode->insertHalfspaces(subHS);
-    return rootNode;
-}
-
-// Ritorna tutte le leaves (macro-roots)
 std::vector<QNode*> QTree::getAllLeaves() const {
-    std::vector<QNode*> all;
-    all.reserve(128); // micro-ottimizzazione: riserva un po' di spazio
+    std::vector<QNode*> result;
+    result.reserve(128);
 
+    // Collect leaves from each macro-root
     for (auto sr : macroRoots) {
         if (!sr) continue;
-        std::queue<QNode*> Q;
-        Q.push(sr);
-        while (!Q.empty()) {
-            QNode* curr = Q.front();
-            Q.pop();
-            if (curr->isLeaf()) {
-                all.push_back(curr);
+
+        std::queue<QNode*> q;
+        q.push(sr);
+
+        while (!q.empty()) {
+            QNode* curr = q.front();
+            q.pop();
+            if (curr->leaf) {
+                result.push_back(curr);
             } else {
                 for (auto c : curr->children) {
-                    if (c) Q.push(c);
+                    if (c) q.push(c);
                 }
             }
         }
     }
-    return all;
+    return result;
 }
 
-// Esegue updateAllOrders su root + su tutti i subroot
 void QTree::updateAllOrders() {
-    // Se vogliamo aggiornare anche la root "classica"
+    // 1) Update root subtree if it exists
     if (root) {
-        root->setOrder(root->covered.size());
-        std::queue<QNode*> QQ;
-        QQ.push(root);
-        while (!QQ.empty()) {
-            QNode* curr = QQ.front();
-            QQ.pop();
-            for (auto c: curr->children) {
+        root->order = root->covered.size();
+        std::queue<QNode*> queueNodes;
+        queueNodes.push(root);
+        while (!queueNodes.empty()) {
+            QNode* curr = queueNodes.front();
+            queueNodes.pop();
+            for (auto c : curr->children) {
                 if (c) {
-                    size_t newOrder = curr->getOrder() + c->covered.size();
-                    c->setOrder(newOrder);
-                    QQ.push(c);
+                    size_t newOrder = curr->order + c->covered.size();
+                    c->order = newOrder;
+                    queueNodes.push(c);
                 }
             }
         }
     }
 
-    // Poi aggiorniamo i macroRoots
+    // 2) Update each macro-root
     for (auto sr : macroRoots) {
         if (!sr) continue;
-        sr->setOrder(sr->covered.size());
-        std::queue<QNode*> QQ;
-        QQ.push(sr);
-        while (!QQ.empty()) {
-            QNode* curr = QQ.front();
-            QQ.pop();
-            for (auto c: curr->children) {
+        sr->order = sr->covered.size();
+        std::queue<QNode*> queueNodes;
+        queueNodes.push(sr);
+        while (!queueNodes.empty()) {
+            QNode* curr = queueNodes.front();
+            queueNodes.pop();
+            for (auto c : curr->children) {
                 if (c) {
-                    size_t newOrder = curr->getOrder() + c->covered.size();
-                    c->setOrder(newOrder);
-                    QQ.push(c);
+                    size_t newOrder = curr->order + c->covered.size();
+                    c->order = newOrder;
+                    queueNodes.push(c);
                 }
             }
         }
