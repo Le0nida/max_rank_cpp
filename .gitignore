@@ -47,3 +47,4 @@ CMakeSettings.json
 /maxrank_normal
 /cmake-build-relwithdebinfo
 examples/queryfile.txt
+config.txt

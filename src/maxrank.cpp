@@ -30,7 +30,9 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
     initializeCache(data.size());
 
     auto updateqt = [&](const std::vector<Point>& old_sky) {
+        std::cout << "> getting skyline ... " << std::endl;
         std::vector<Point> new_sky = getskyline(incomp);
+        std::cout << "> building halfspaces ... " << std::endl;
         std::vector<long> new_halfspaces = genhalfspaces(p, new_sky);
         std::vector<long> unique_new_halfspaces;
         for (const auto& hs : new_halfspaces) {
@@ -48,6 +50,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
         new_halfspaces = std::move(unique_new_halfspaces);
 
+        std::cout << "> " << new_halfspaces.size() << " halfspace(s) to insert" << std::endl;
         if (!new_halfspaces.empty()) {
             //qt.inserthalfspaces(new_halfspaces);
             qt.inserthalfspacesMacroSplit(new_halfspaces);
@@ -86,7 +89,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             }
 
             int hamweight = 0;
-            while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular) {
+            while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular && hamweight <= limitHamWeight) {
                 //std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->getHalfspaces().size();
                 std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight);
                 //std::cout << ", Hamstring " << hamstrings.size();

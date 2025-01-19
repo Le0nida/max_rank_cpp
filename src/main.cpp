@@ -11,6 +11,7 @@
 #include "cell.h"
 #include <chrono>
 #include <csvutils.h>
+#include <filesystem>
 
 using namespace std;
 
@@ -87,11 +88,16 @@ void parseArgs(int argc, char* argv[]) {
  * \param configFile Path to the configuration file.
  */
 void parseConfigFile(const std::string& configFile) {
-    std::ifstream in(configFile);
-    if (!in.is_open()) {
-        throw std::runtime_error("Could not open config file: " + configFile);
+    // Convert to an absolute path if not already
+    std::filesystem::path configPath(configFile);
+    if (!configPath.is_absolute()) {
+        configPath = std::filesystem::absolute(configPath);
     }
 
+    std::ifstream in(configPath);
+    if (!in.is_open()) {
+        throw std::runtime_error("Could not open config file: " + configPath.string());
+    }
     std::string line;
     while (std::getline(in, line)) {
         // skip empty lines or comments
@@ -174,27 +180,39 @@ int main(const int argc, char* argv[]) {
     }
 
     // 6th parameter could be a config file or a series of --flag=value arguments
-    if (argc >= 6) {
-        // If the 6th parameter does not start with "--", treat it as a config file
-        // else parse it as a flag (or series of flags).
+    if (argc >= 7) {  // Ensure there's a 6th argument
         std::string arg6 = argv[6];
-        if (!arg6.empty() && arg6.rfind("--", 0) != 0) {
-            // Attempt to parse as config file
+
+        // Convert to absolute path if it looks like a file path
+        std::filesystem::path configPath(arg6);
+        if (std::filesystem::exists(configPath) && std::filesystem::is_regular_file(configPath)) {
             try {
-                parseConfigFile(arg6);
+                parseConfigFile(configPath.string());  // Load config file
             } catch (const std::exception& e) {
-                std::cerr << "Warning: " << e.what() << "\n"
-                          << "Attempting to parse other flags in argv...\n";
+                std::cerr << "Error loading config file: " << e.what() << "\n";
             }
+        } else if (arg6.rfind("--", 0) == 0) {
+            // If it starts with "--", assume it's a CLI argument and parse it
+            parseArgs(argc, argv);
+        } else {
+            std::cerr << "Ignoring unrecognized argument: " << arg6 << std::endl;
         }
-        // Now parse any remaining arguments as flags
+    } else if (argc > 6) {
         parseArgs(argc, argv);
     }
 
-    // If no 6th param but we have others, parse them
-    else if (argc > 6) {
-        parseArgs(argc, argv);
-    }
+    std::cout << "\n========================[ PARAMS SUMMARY ]========================\n";
+    std::cout << "Data File:           " << datafile << "\n";
+    std::cout << "Query File:          " << queryfile << "\n";
+    std::cout << "Records Loaded:      " << numRecords << "\n";
+    std::cout << "Dimensions:          " << dimensions << "\n";
+    std::cout << "Queries:             " << numQueries << "\n";
+    std::cout << "Algorithm Parameters:\n";
+    std::cout << "   limitHamWeight:          " << limitHamWeight << "\n";
+    std::cout << "   maxLevelQTree:           " << maxLevelQTree << "\n";
+    std::cout << "   maxCapacityQNode:        " << maxCapacityQNode << "\n";
+    std::cout << "   maxNoBinStringToCheck:   " << maxNoBinStringToCheck << "\n";
+    std::cout << "   halfspacesLengthLimit:   " << halfspacesLengthLimit << "\n";
 
     // Load dataset
     vector<Point> data = readCSV(datafile, numRecords, dimensions);

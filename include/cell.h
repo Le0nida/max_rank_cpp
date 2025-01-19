@@ -12,6 +12,7 @@
 #include "qnode.h"
 
 extern int halfspacesLengthLimit;
+extern int maxNoBinStringToCheck;
 
 /**
  * \class Cell

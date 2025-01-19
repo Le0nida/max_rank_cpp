@@ -339,7 +339,9 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf,
     bounds[dims] = {0.0, std::numeric_limits<double>::infinity()};
 
     // Try each Hamming string
+    int counterLoop = 0;
     for (const auto& hamstr : hamstrings) {
+        if (counterLoop++ > maxNoBinStringToCheck) return cells;
         // Set constraints according to the bitstring
         for (int b = 0; b < (int)hamstr.size(); ++b) {
             auto hs = halfspaceCache->get(halfspaces[b]);
