@@ -31,7 +31,14 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
     auto updateqt = [&](const std::vector<Point>& old_sky) {
         std::cout << "> getting skyline ... " << std::endl;
+        auto start = std::chrono::high_resolution_clock::now();
         std::vector<Point> new_sky = getskyline(incomp);
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "> skyline time: " << elapsed.count() << " seconds.\n" << std::endl;
+
+
+        start = std::chrono::high_resolution_clock::now();
         std::cout << "> building halfspaces ... " << std::endl;
         std::vector<long> new_halfspaces = genhalfspaces(p, new_sky);
         std::vector<long> unique_new_halfspaces;
@@ -49,13 +56,20 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         }
 
         new_halfspaces = std::move(unique_new_halfspaces);
+        end = std::chrono::high_resolution_clock::now();
+        elapsed = end - start;
+        std::cout << "> building halfspaces time: " << elapsed.count() << " seconds.\n" << std::endl;
 
+        start = std::chrono::high_resolution_clock::now();
         std::cout << "> " << new_halfspaces.size() << " halfspace(s) to insert" << std::endl;
         if (!new_halfspaces.empty()) {
             //qt.inserthalfspaces(new_halfspaces);
             qt.inserthalfspacesMacroSplit(new_halfspaces);
             std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted" << std::endl;
         }
+        end = std::chrono::high_resolution_clock::now();
+        elapsed = end - start;
+        std::cout << "> inserting halfspaces time: " << elapsed.count() << " seconds.\n" << std::endl;
 
         auto new_leaves = qt.getAllLeaves();//qt.getLeaves();
         //std::cout << "> " << new_leaves.size() << " total leaves" << std::endl;
@@ -78,6 +92,7 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         int minorder = std::numeric_limits<int>::max();
         std::vector<Cell> mincells;
 
+        auto start = std::chrono::high_resolution_clock::now();
         for (auto leaf : leaves) {
             int leaf_order = static_cast<int>(leaf->order);
             if (leaf_order > minorder || leaf_order > minorder_singular) {
@@ -90,11 +105,11 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
             int hamweight = 0;
             while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular && hamweight <= limitHamWeight) {
-                //std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->getHalfspaces().size();
+                // std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->halfspaces.size();
                 std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight);
-                //std::cout << ", Hamstring " << hamstrings.size();
+                // std::cout << ", Hamstring " << hamstrings.size();
                 std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
-                //std::cout << ", Celle " << cells.size() << std::endl;
+                // std::cout << ", Celle " << cells.size() << std::endl;
                 if (!cells.empty()) {
                     for (auto& cell : cells) {
                         cell.order = leaf_order + hamweight;
@@ -113,6 +128,9 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
             }
         }
         std::cout << "> Expansion " << n_exp << ": Found " << mincells.size() << " mincell(s)" << std::endl;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::cout << "> expansion time: " << elapsed.count() << " seconds.\n" << std::endl;
 
         int new_singulars = 0;
         std::vector<std::shared_ptr<HalfSpace>> to_expand;

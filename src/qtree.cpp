@@ -93,21 +93,23 @@ QNode* QTree::buildSubtree(const std::vector<std::array<double,2>>& subMBR,
 void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) {
     if (halfspaces.empty()) return;
 
-    // Prepare containers
-    int nSub = static_cast<int>(precomputedSubMBRs.size());
-    std::vector< std::vector<long> > subHS(nSub);
+    const int nSub = (int) precomputedSubMBRs.size();
+    // For each subMBR, store two lists: fullyCovered, partialOverlapped
+    std::vector<std::vector<long>> fullyCovered(nSub);
+    std::vector<std::vector<long>> partialOverlapped(nSub);
 
-    // Multi-threaded distribution
-    size_t totalHS = halfspaces.size();
-    unsigned int hwThreads = std::max(1U, std::thread::hardware_concurrency());
-    size_t chunkSize = (totalHS + hwThreads - 1) / hwThreads;
+    const size_t totalHS = halfspaces.size();
+    const unsigned int hwThreads = std::max(1U, std::thread::hardware_concurrency());
+    const size_t chunkSize = (totalHS + hwThreads - 1) / hwThreads;
 
-    // Partial results per thread
-    std::vector<std::vector<std::vector<long>>> partialRes(
-        hwThreads, std::vector<std::vector<long>>(nSub)
-    );
+    // partial results per thread
+    struct HSBatch {
+        std::vector<long> fully;
+        std::vector<long> partial;
+    };
+    std::vector<std::vector<HSBatch>> partialRes(hwThreads, std::vector<HSBatch>(nSub));
 
-    // 1) Distribute halfspaces among subMBRs in parallel
+    // 1) Distribute halfspaces
     std::vector<std::future<void>> distributionFutures;
     distributionFutures.reserve(hwThreads);
 
@@ -116,18 +118,18 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
         if (start >= totalHS) break;
         size_t end = std::min(start + chunkSize, totalHS);
 
-        // Parallel task: assign halfspaces to subMBRs
         distributionFutures.push_back(std::async(std::launch::async,
             [this, &halfspaces, start, end, &partialRes, t, nSub]()
         {
             for (size_t idx = start; idx < end; ++idx) {
                 long hsID = halfspaces[idx];
-                const auto hsPtr = halfspaceCache->get(hsID);
+                auto hsPtr = halfspaceCache->get(hsID);
                 if (!hsPtr) continue;
 
-                double known = hsPtr->known;
+                const double known = hsPtr->known;
                 const auto& cVec = hsPtr->coeff;
-                // Evaluate each precomputed subMBR
+
+                // For each subMBR
                 for (int i = 0; i < nSub; i++) {
                     double minVal = 0, maxVal = 0;
                     for (size_t d = 0; d < cVec.size(); d++) {
@@ -140,17 +142,22 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
                             maxVal += c * precomputedSubMBRs[i][d][0];
                         }
                     }
-                    // Classical Overlapped/Below/Above logic
-                    if (maxVal < known || minVal <= known) {
-                        // Entirely below or Overlapped => add it
-                        partialRes[t][i].push_back(hsID);
+
+                    // "Fully covered" => store once in fully list
+                    if (maxVal < known) {
+                        partialRes[t][i].fully.push_back(hsID);
                     }
+                    // partial overlap => store in partial list
+                    else if (minVal <= known) {
+                        partialRes[t][i].partial.push_back(hsID);
+                    }
+                    // else => skip
                 }
             }
         }));
     }
 
-    // Wait for distribution tasks to finish
+    // Wait distribution
     for (auto &f : distributionFutures) {
         f.get();
     }
@@ -158,39 +165,65 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
     // Combine partial results
     for (unsigned int t = 0; t < hwThreads; t++) {
         for (int i = 0; i < nSub; i++) {
-            if (!partialRes[t][i].empty()) {
-                subHS[i].insert(subHS[i].end(),
-                                partialRes[t][i].begin(),
-                                partialRes[t][i].end());
+            if (!partialRes[t][i].fully.empty()) {
+                fullyCovered[i].insert(
+                    fullyCovered[i].end(),
+                    partialRes[t][i].fully.begin(),
+                    partialRes[t][i].fully.end()
+                );
+            }
+            if (!partialRes[t][i].partial.empty()) {
+                partialOverlapped[i].insert(
+                    partialOverlapped[i].end(),
+                    partialRes[t][i].partial.begin(),
+                    partialRes[t][i].partial.end()
+                );
             }
         }
     }
 
-    // 2) Build/update sub-roots in parallel
+    // 2) Build/Update sub-roots
     std::vector<std::future<void>> buildFutures;
     buildFutures.reserve(nSub);
 
     for (int i = 0; i < nSub; i++) {
-        if (subHS[i].empty()) continue;
+        // if no halfspace at all => skip
+        if (fullyCovered[i].empty() && partialOverlapped[i].empty()) continue;
 
-        buildFutures.push_back(std::async(std::launch::async,
-            [this, i, &subHS]()
-        {
+        buildFutures.push_back(std::async(std::launch::async, [this, i, &fullyCovered, &partialOverlapped]() {
             if (!macroRoots[i]) {
-                // Create a new sub-root
-                macroRoots[i] = buildSubtree(precomputedSubMBRs[i], subHS[i]);
+                // Create a sub-root
+                // Step 1: new QNode
+                QNode* subRoot = new QNode(const_cast<QTree*>(this), nullptr, precomputedSubMBRs[i], 1);
+
+                // "fully covered" => put in subRoot->covered
+                subRoot->covered.insert(subRoot->covered.end(),
+                                        fullyCovered[i].begin(),
+                                        fullyCovered[i].end());
+
+                // partial => insert halfspaces
+                subRoot->insertHalfspaces(partialOverlapped[i]);
+
+                macroRoots[i] = subRoot;
             } else {
-                // Update existing sub-root
-                macroRoots[i]->insertHalfspaces(subHS[i]);
+                // existing subRoot =>
+                // We add "fully covered" to subRoot->covered
+                macroRoots[i]->covered.insert(
+                    macroRoots[i]->covered.end(),
+                    fullyCovered[i].begin(),
+                    fullyCovered[i].end()
+                );
+                // partial => insert
+                macroRoots[i]->insertHalfspaces(partialOverlapped[i]);
             }
         }));
     }
 
-    // Wait for all sub-root builds
     for (auto &f : buildFutures) {
         f.get();
     }
 }
+
 
 std::vector<QNode*> QTree::getAllLeaves() const {
     std::vector<QNode*> result;

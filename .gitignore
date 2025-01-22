@@ -48,3 +48,4 @@ CMakeSettings.json
 /cmake-build-relwithdebinfo
 examples/queryfile.txt
 config.txt
+/build

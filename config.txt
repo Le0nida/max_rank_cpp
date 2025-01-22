@@ -1,5 +1,5 @@
-limitHamWeight=4
-maxLevelQTree=8
+limitHamWeight=3
+maxLevelQTree=5
 maxCapacityQNode=20
 maxNoBinStringToCheck=60000
 halfspacesLengthLimit=21
