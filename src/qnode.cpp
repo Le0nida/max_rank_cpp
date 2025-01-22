@@ -5,7 +5,7 @@ static int normalizedMax = 1;
 
 QNode::QNode(QTree* owner,
              QNode* parent,
-             const std::vector<std::array<double,2>>& mbr,
+             const std::vector<std::array<float,2>>& mbr,
              const int level)
     : owner(owner),
       parent(parent),
@@ -26,8 +26,11 @@ void QNode::setLeaf(const bool lf) {
 }
 
 std::vector<long> QNode::getCovered() const {
-    // Combine local covered with ancestor's covered
-    std::vector<long> out(covered.begin(), covered.end());
+    // Combine local covered with ancestor's covered (delta coverage approach)
+    std::vector<long> out;
+    out.reserve(covered.size() + 32); // slight guess, to reduce reallocation
+    out.insert(out.end(), covered.begin(), covered.end());
+
     const QNode* anc = parent;
     while (anc) {
         out.insert(out.end(), anc->covered.begin(), anc->covered.end());
@@ -45,12 +48,15 @@ PositionHS QNode::MbrVersusHalfSpace(const std::vector<double>& coeff, const dou
 
     for (size_t i = 0; i < dcount; ++i) {
         double c = coeff[i];
+        // MBR coords in float
+        float low  = mbr[i][0];
+        float high = mbr[i][1];
         if (c >= 0) {
-            minVal += c * mbr[i][0];
-            maxVal += c * mbr[i][1];
+            minVal += c * low;
+            maxVal += c * high;
         } else {
-            minVal += c * mbr[i][1];
-            maxVal += c * mbr[i][0];
+            minVal += c * high;
+            maxVal += c * low;
         }
     }
     if (maxVal < known)  return PositionHS::BELOW;
@@ -65,15 +71,15 @@ void QNode::insertHalfspace(const long hsID) {
     PositionHS pos = MbrVersusHalfSpace(hs->coeff, hs->known);
     switch (pos) {
         case PositionHS::BELOW:
-            // This halfspace is fully covering the node
+            // This halfspace is fully covering the node (delta coverage)
             covered.push_back(hsID);
             break;
         case PositionHS::OVERLAPPED:
-            // This halfspace partially covers the node
+            // Partially covers the node
             if (leaf) {
                 halfspaces.push_back(hsID);
                 // Check capacity -> split if we exceed maxhsnode
-                if (static_cast<int>(halfspaces.size()) > owner->maxhsnode && norm) {
+                if ((int)halfspaces.size() > owner->maxhsnode && norm) {
                     if (level < owner->maxLevel) {
                         splitNode();
                         // Redistribute existing halfspaces to children
@@ -96,7 +102,7 @@ void QNode::insertHalfspace(const long hsID) {
             }
             break;
         case PositionHS::ABOVE:
-            // This node is completely outside the halfspace -> do nothing
+            // Node is completely outside the halfspace -> do nothing
             break;
     }
 }
@@ -113,7 +119,7 @@ void QNode::splitNode() {
         return;
     }
 
-    // Check total halfspaces (covered + halfspaces)
+    // total halfspaces
     size_t totalHS = halfspaces.size() + covered.size();
     if (totalHS < (size_t)owner->maxhsnode) return;
 
@@ -121,16 +127,17 @@ void QNode::splitNode() {
     setLeaf(false);
     children.resize(numOfSubdivisions, nullptr);
 
-    // Subdivide MBR
     size_t dcount = mbr.size();
     for (int mask = 0; mask < numOfSubdivisions; ++mask) {
-        std::vector<std::array<double,2>> child_mbr(dcount);
+        std::vector<std::array<float,2>> child_mbr(dcount);
         for (size_t d = 0; d < dcount; d++) {
-            double mid = 0.5 * (mbr[d][0] + mbr[d][1]);
+            float minVal = mbr[d][0];
+            float maxVal = mbr[d][1];
+            float mid = 0.5f * (minVal + maxVal);
             if (mask & (1 << d)) {
-                child_mbr[d] = { mid, mbr[d][1] };
+                child_mbr[d] = { mid, maxVal };
             } else {
-                child_mbr[d] = { mbr[d][0], mid };
+                child_mbr[d] = { minVal, mid };
             }
         }
         // Create the child node
@@ -156,7 +163,7 @@ bool QNode::checkNodeValidity() const {
     for (size_t i = 0; i < corners; ++i) {
         double sum = 0.0;
         for (size_t d = 0; d < dcount; d++) {
-            double coord = (i & (1 << d)) ? mbr[d][1] : mbr[d][0];
+            float coord = (i & (1 << d)) ? mbr[d][1] : mbr[d][0];
             sum += coord;
         }
         // If at least one corner is inside normalized range, consider it valid

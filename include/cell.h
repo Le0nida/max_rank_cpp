@@ -33,7 +33,7 @@ public:
          std::string  mask,
          const std::vector<long>& covered,
          const std::vector<long>& halfspaces,
-         const std::vector<std::array<double, 2>>& leaf_mbr,
+         const std::vector<std::array<float, 2>>& leaf_mbr,
          Point  feasible_pnt);
 
     /**
@@ -46,7 +46,7 @@ public:
     std::string mask;                            ///< Binary string representation
     std::vector<long> covered;                   ///< Fully covered halfspaces
     std::vector<long> halfspaces;                ///< Overlapping halfspaces
-    std::vector<std::array<double, 2>> leaf_mbr; ///< Local bounding region
+    std::vector<std::array<float, 2>> leaf_mbr; ///< Local bounding region
     Point feasible_pnt;                          ///< A feasible point in this region
 };
 

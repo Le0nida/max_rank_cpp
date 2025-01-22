@@ -19,8 +19,6 @@ class QTree;
  * \class QNode
  * \brief Represents a node in the QTree. Each node can store halfspaces
  *        and subdivide into children if necessary.
- *
- * All members are public for simplicity. MBR covers [min,max] in each dimension.
  */
 class QNode {
 public:
@@ -28,31 +26,30 @@ public:
     QTree* owner;                 ///< Pointer to the owner QTree
     QNode* parent;                ///< Pointer to the parent QNode (null if root)
     std::vector<QNode*> children; ///< Child nodes (size = 2^dims). Some may be null if not valid.
-    std::vector<long> covered;    ///< Halfspaces that fully cover this node (no further checks required)
-    std::vector<long> halfspaces; ///< Halfspaces that overlap this node and need potential splitting
+    std::vector<long> covered;    ///< Halfspaces that fully cover this node (delta from parent)
+    std::vector<long> halfspaces; ///< Halfspaces that overlap this node and may need splitting
 
-
-    int leafIndex;                          ///< Index used if needed (e.g., in a list of leaves)
-    std::vector<std::array<double,2>> mbr;  ///< [min,max] bounding region for each dimension
+    int leafIndex;                          ///< Index used if needed
+    std::vector<std::array<float,2>> mbr;   ///< [min,max] bounding region for each dimension in float
 
     bool norm;     ///< True if this node is valid
     bool leaf;     ///< True if this node is a leaf (no children)
-    size_t order;  ///< Accumulated order (sum of covered halfspaces of parents)
+    size_t order;  ///< Accumulated order (sum of covered halfspaces up the chain)
     int level;     ///< Depth level in the tree (0 = root)
 
     /**
      * \brief Constructor
      * \param owner  Owning QTree.
      * \param parent Parent QNode (or null if root).
-     * \param mbr    Bounding rectangle for each dimension.
+     * \param mbr    Bounding rectangle for each dimension (float).
      * \param level  Depth level in the QTree.
      */
     QNode(QTree* owner,
           QNode* parent,
-          const std::vector<std::array<double,2>>& mbr,
+          const std::vector<std::array<float,2>>& mbr,
           int level);
 
-    ///< Delete copy semantics to avoid accidental duplication
+    ///< Delete copy semantics
     QNode(const QNode&) = delete;
     QNode& operator=(const QNode&) = delete;
 
@@ -91,15 +88,15 @@ public:
 
     /**
      * \brief Determines how the node's MBR relates to the specified halfspace.
-     * \param coeff Coefficients of the halfspace.
-     * \param known Right-hand side (RHS) of the halfspace.
+     * \param coeff Coefficients of the halfspace (double).
+     * \param known Right-hand side (RHS) of the halfspace (double).
      * \return PositionHS::BELOW, ABOVE, or OVERLAPPED.
      */
     [[nodiscard]] PositionHS MbrVersusHalfSpace(const std::vector<double>& coeff, double known) const;
 
     /**
-     * \brief Gathers 'covered' halfspaces from this node and all ancestor nodes.
-     * \return A vector of halfspace IDs.
+     * \brief Gathers 'covered' halfspaces from this node and all ancestor nodes (the chain).
+     * \return A vector of halfspace IDs, i.e. parent's + this node's.
      */
     [[nodiscard]] std::vector<long> getCovered() const;
 

@@ -6,12 +6,11 @@ QTree::QTree(const int dims, const int maxhsnode, const int maxLevel)
       maxLevel(maxLevel),
       root(nullptr)
 {
-
     // Create the classical root covering [0,1]^dims
     root = createroot();
 
-    // Precompute sub-MBRs for macro-split
-    const std::vector<std::array<double,2>> globalMBR(dims, {0.0, 1.0});
+    // Precompute sub-MBRs for macro-split (using float)
+    const std::vector<std::array<float,2>> globalMBR(dims, {0.0f, 1.0f});
     precomputedSubMBRs = macroSplitMBR(globalMBR);
 
     // Prepare macroRoots, one for each sub-MBR
@@ -23,8 +22,8 @@ QTree::~QTree() {
 }
 
 QNode* QTree::createroot() {
-    // Root node with MBR = [0,1]^dims
-    const std::vector<std::array<double,2>> mbr(dims, {0.0, 1.0});
+    // Root node with MBR = [0,1]^dims (float)
+    const std::vector<std::array<float,2>> mbr(dims, {0.0f, 1.0f});
     return new QNode(this, nullptr, mbr, 0);
 }
 
@@ -61,28 +60,31 @@ void QTree::destroyAllNodes() {
     macroRoots.clear();
 }
 
-std::vector< std::vector<std::array<double,2>> >
-QTree::macroSplitMBR(const std::vector<std::array<double,2>>& globalMBR) const {
+std::vector< std::vector<std::array<float,2>> >
+QTree::macroSplitMBR(const std::vector<std::array<float,2>>& globalMBR) const
+{
     // Each bit in 'mask' picks lower or upper half for each dimension
-    std::vector< std::vector<std::array<double,2>> > result(1 << dims);
+    std::vector< std::vector<std::array<float,2>> > result(1 << dims);
 
     for (int mask = 0; mask < (1 << dims); mask++) {
         result[mask].resize(dims);
-        double mid;
         for (int d = 0; d < dims; d++) {
-            mid = 0.5 * (globalMBR[d][0] + globalMBR[d][1]);
+            float minVal = globalMBR[d][0];
+            float maxVal = globalMBR[d][1];
+            float mid    = 0.5f * (minVal + maxVal);
             if (mask & (1 << d)) {
-                result[mask][d] = { mid, globalMBR[d][1] };
+                result[mask][d] = { mid, maxVal };
             } else {
-                result[mask][d] = { globalMBR[d][0], mid };
+                result[mask][d] = { minVal, mid };
             }
         }
     }
     return result;
 }
 
-QNode* QTree::buildSubtree(const std::vector<std::array<double,2>>& subMBR,
-                           const std::vector<long>& subHS) const {
+QNode* QTree::buildSubtree(const std::vector<std::array<float,2>>& subMBR,
+                           const std::vector<long>& subHS) const
+{
     // Create a new root node for this subMBR
     auto* rootNode = new QNode(const_cast<QTree*>(this), nullptr, subMBR, 1);
     // Insert halfspaces incrementally
@@ -109,7 +111,7 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
     };
     std::vector<std::vector<HSBatch>> partialRes(hwThreads, std::vector<HSBatch>(nSub));
 
-    // 1) Distribute halfspaces
+    // 1) Distribute halfspaces in parallel
     std::vector<std::future<void>> distributionFutures;
     distributionFutures.reserve(hwThreads);
 
@@ -126,20 +128,23 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
                 auto hsPtr = halfspaceCache->get(hsID);
                 if (!hsPtr) continue;
 
-                const double known = hsPtr->known;
-                const auto& cVec = hsPtr->coeff;
+                double known = hsPtr->known;           // We keep halfspace in double
+                const auto& cVec = hsPtr->coeff;       // also double
 
                 // For each subMBR
                 for (int i = 0; i < nSub; i++) {
+                    // We'll do minVal, maxVal in double for numeric stability
                     double minVal = 0, maxVal = 0;
                     for (size_t d = 0; d < cVec.size(); d++) {
                         double c = cVec[d];
+                        float low = precomputedSubMBRs[i][d][0];
+                        float high= precomputedSubMBRs[i][d][1];
                         if (c >= 0) {
-                            minVal += c * precomputedSubMBRs[i][d][0];
-                            maxVal += c * precomputedSubMBRs[i][d][1];
+                            minVal += c * low;
+                            maxVal += c * high;
                         } else {
-                            minVal += c * precomputedSubMBRs[i][d][1];
-                            maxVal += c * precomputedSubMBRs[i][d][0];
+                            minVal += c * high;
+                            maxVal += c * low;
                         }
                     }
 
@@ -190,13 +195,26 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
         // if no halfspace at all => skip
         if (fullyCovered[i].empty() && partialOverlapped[i].empty()) continue;
 
+        // **Memory saver**:
+        // If partialOverlapped[i] is empty => entire subMBR is fully covered,
+        // no need for a macro-root subtree.
+        if (partialOverlapped[i].empty()) {
+            // Optionally store these "fully covered" halfspaces in a global structure
+            // if you need them for later queries. Or just skip creation:
+            continue;
+        }
+
+        // Otherwise, partial coverage => we do need a macro-root
         buildFutures.push_back(std::async(std::launch::async, [this, i, &fullyCovered, &partialOverlapped]() {
             if (!macroRoots[i]) {
                 // Create a sub-root
-                // Step 1: new QNode
-                QNode* subRoot = new QNode(const_cast<QTree*>(this), nullptr, precomputedSubMBRs[i], 1);
+                QNode* subRoot = new QNode(const_cast<QTree*>(this),
+                                           nullptr,
+                                           precomputedSubMBRs[i],
+                                           1);
 
                 // "fully covered" => put in subRoot->covered
+                // (Delta coverage approach: these are newly discovered coverage at this root)
                 subRoot->covered.insert(subRoot->covered.end(),
                                         fullyCovered[i].begin(),
                                         fullyCovered[i].end());
@@ -207,7 +225,7 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
                 macroRoots[i] = subRoot;
             } else {
                 // existing subRoot =>
-                // We add "fully covered" to subRoot->covered
+                // We add "fully covered" to subRoot->covered (delta coverage at this level)
                 macroRoots[i]->covered.insert(
                     macroRoots[i]->covered.end(),
                     fullyCovered[i].begin(),
@@ -223,7 +241,6 @@ void QTree::inserthalfspacesMacroSplit(const std::vector<long int>& halfspaces) 
         f.get();
     }
 }
-
 
 std::vector<QNode*> QTree::getAllLeaves() const {
     std::vector<QNode*> result;

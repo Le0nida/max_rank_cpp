@@ -84,7 +84,7 @@ std::vector<std::string> readCombinations(const int& dims) {
     return comb;
 }
 
-bool MbrIsValid(const std::vector<std::array<double, 2>>& mbr,
+bool MbrIsValid(const std::vector<std::array<float, 2>>& mbr,
                 const std::vector<std::string>& Comb,
                 int dims,
                 const float queryPlane[])

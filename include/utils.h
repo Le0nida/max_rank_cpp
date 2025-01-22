@@ -35,7 +35,7 @@ std::vector<std::string> readCombinations(const int& dims);
  *
  * \return True if all vertices of the MBR lie below the hyperplane, false otherwise.
  */
-bool MbrIsValid(const std::vector<std::array<double, 2>>& mbr,
+bool MbrIsValid(const std::vector<std::array<float, 2>>& mbr,
                 const std::vector<std::string>& Comb,
                 int dims,
                 const float queryPlane[]);

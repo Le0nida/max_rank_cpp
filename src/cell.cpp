@@ -38,7 +38,7 @@ Cell::Cell(const int order,
            std::string  mask,
            const std::vector<long>& covered,
            const std::vector<long>& halfspaces,
-           const std::vector<std::array<double, 2>>& leaf_mbr,
+           const std::vector<std::array<float, 2>>& leaf_mbr,
            Point  feasible_pnt)
     : order(order),
       mask(std::move(mask)),
@@ -311,7 +311,7 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf,
 
     // If no halfspaces, build a trivial cell from MBR center
     if (halfspaces.empty()) {
-        std::vector<std::array<double, 2>> mbr = leaf.mbr;
+        std::vector<std::array<float, 2>> mbr = leaf.mbr;
         std::vector<double> center(dims);
         for (int i = 0; i < dims; ++i) {
             center[i] = 0.5 * (mbr[i][0] + mbr[i][1]);
