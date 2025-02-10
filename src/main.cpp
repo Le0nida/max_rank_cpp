@@ -24,6 +24,11 @@ int maxCapacityQNode = 10;
 int maxNoBinStringToCheck = 999999;
 int halfspacesLengthLimit = 21;
 
+std::string getBaseFilename(const std::string& path) {
+    std::filesystem::path p(path);
+    return p.stem().string(); // Get filename without extension
+}
+
 /**
  * \brief Parses command-line flags of the form --flag=value
  *        and updates the global variables accordingly.
@@ -32,10 +37,10 @@ int halfspacesLengthLimit = 21;
  * \param argv Array of argument strings
  */
 void parseArgs(int argc, char* argv[]) {
-    // Required parameters come first: datafile, numRecords, dimensions, numQueries, queryfile
-    // We parse them by position, then parse optional flags from index 6 onward.
+    // Required parameters come first: datafile, numRecords, dimensions, numQueries, queryfile, outputDir
+    // We parse them by position, then parse optional flags from index 7 onward.
     // e.g. --limit-ham-weight=500
-    for (int i = 6; i < argc; i++) {
+    for (int i = 7; i < argc; i++) {
         std::string arg = argv[i];
         // Identify flags of the form "--key=value"
         if (arg.rfind("--", 0) == 0) {
@@ -146,10 +151,10 @@ int main(const int argc, char* argv[]) {
     const auto start = std::chrono::high_resolution_clock::now();
 
     // Check required parameters
-    if (argc < 6) {
+    if (argc < 7) {
         std::cerr << "Usage: " << argv[0]
-                  << " <datafile> <numRecords> <dimensions> <numQueries> <queryfile>\n"
-                  << " [OPTIONAL: 6th param is a config file or CLI flags like --limit-ham-weight=999]\n\n"
+                  << " <datafile> <numRecords> <dimensions> <numQueries> <queryfile> <outputdir>\n"
+                  << " [OPTIONAL: 7th param is a config file or CLI flags like --limit-ham-weight=999]\n\n"
                   << "Example flags:\n"
                   << "  --limit-ham-weight=999\n"
                   << "  --max-level-qtree=8\n"
@@ -163,6 +168,7 @@ int main(const int argc, char* argv[]) {
     // Required parameters
     std::string datafile   = argv[1];
     std::string queryfile  = argv[5];
+    std::string outdir     = argv[6];
     int numRecords         = 0;
     int dimensions         = 0;
     int numQueries         = 0;
@@ -180,24 +186,24 @@ int main(const int argc, char* argv[]) {
     }
 
     // 6th parameter could be a config file or a series of --flag=value arguments
-    if (argc >= 7) {  // Ensure there's a 6th argument
-        std::string arg6 = argv[6];
+    if (argc >= 8) {  // Ensure there's a 6th argument
+        std::string arg7 = argv[7];
 
         // Convert to absolute path if it looks like a file path
-        std::filesystem::path configPath(arg6);
+        std::filesystem::path configPath(arg7);
         if (std::filesystem::exists(configPath) && std::filesystem::is_regular_file(configPath)) {
             try {
                 parseConfigFile(configPath.string());  // Load config file
             } catch (const std::exception& e) {
                 std::cerr << "Error loading config file: " << e.what() << "\n";
             }
-        } else if (arg6.rfind("--", 0) == 0) {
+        } else if (arg7.rfind("--", 0) == 0) {
             // If it starts with "--", assume it's a CLI argument and parse it
             parseArgs(argc, argv);
         } else {
-            std::cerr << "Ignoring unrecognized argument: " << arg6 << std::endl;
+            std::cerr << "Ignoring unrecognized argument: " << arg7 << std::endl;
         }
-    } else if (argc > 6) {
+    } else if (argc > 7) {
         parseArgs(argc, argv);
     }
 
@@ -207,12 +213,13 @@ int main(const int argc, char* argv[]) {
     std::cout << "Records Loaded:      " << numRecords << "\n";
     std::cout << "Dimensions:          " << dimensions << "\n";
     std::cout << "Queries:             " << numQueries << "\n";
+    std::cout << "Output Directory:    " << outdir << "\n\n";
     std::cout << "Algorithm Parameters:\n";
     std::cout << "   limitHamWeight:          " << limitHamWeight << "\n";
     std::cout << "   maxLevelQTree:           " << maxLevelQTree << "\n";
     std::cout << "   maxCapacityQNode:        " << maxCapacityQNode << "\n";
     std::cout << "   maxNoBinStringToCheck:   " << maxNoBinStringToCheck << "\n";
-    std::cout << "   halfspacesLengthLimit:   " << halfspacesLengthLimit << "\n";
+    std::cout << "   halfspacesLengthLimit:   " << halfspacesLengthLimit << "\n\n";
 
     // Load dataset
     vector<Point> data = readCSV(datafile, numRecords, dimensions);
@@ -249,7 +256,7 @@ int main(const int argc, char* argv[]) {
                 cell_entry.insert(cell_entry.end(), cell.feasible_pnt.coord.begin(), cell.feasible_pnt.coord.end());
                 cell_entry.push_back(1 - accumulate(cell.feasible_pnt.coord.begin(), cell.feasible_pnt.coord.end(), 0.0));
 
-                break; // todo rimuovere e considerarli tutti
+                break;
             }
             cells.push_back(cell_entry);
         }
@@ -277,9 +284,13 @@ int main(const int argc, char* argv[]) {
         }
     }
 
+    std::string baseFilename = getBaseFilename(datafile) + getBaseFilename(queryfile);
+    std::filesystem::path outPathMaxrank = std::filesystem::path(outdir) / ("maxrank_" + baseFilename + ".csv");
+    std::filesystem::path outPathCells   = std::filesystem::path(outdir) / ("cells_"   + baseFilename + ".csv");
+
     // Write results to CSV
-    writeCSV(R"(C:\Users\leona\Desktop\maxrank.csv)", res, { "id", "maxrank" });
-    writeCSV(R"(C:\Users\leona\Desktop\cells.csv)", cells, { "id", "query_found" });
+    writeCSV(outPathMaxrank.string(), res, { "id", "maxrank" });
+    writeCSV(outPathCells.string(), cells, { "id", "query_found" });
 
     // Print execution time
     const auto end = std::chrono::high_resolution_clock::now();
