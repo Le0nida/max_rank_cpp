@@ -1,5 +1,7 @@
 #include "maxrank.h"
 
+#include <unordered_set>
+
 int numOfSubdivisions = 0;
 
 // Definisci e inizializza le variabili globali
@@ -29,6 +31,12 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
     // Inizializzo la cache per gli halfspaces
     initializeCache(data.size());
 
+    std::unordered_set<long> incompIDs;
+    incompIDs.reserve(incomp.size());
+    for (auto &pt : incomp) {
+        incompIDs.insert(pt.id);
+    }
+
     auto updateqt = [&](const std::vector<Point>& old_sky) {
         std::cout << "> getting skyline ... " << std::endl;
         auto start = std::chrono::high_resolution_clock::now();
@@ -37,9 +45,6 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         std::chrono::duration<double> elapsed = end - start;
         std::cout << "> skyline time: " << elapsed.count() << " seconds.\n" << std::endl;
 
-
-        start = std::chrono::high_resolution_clock::now();
-        std::cout << "> building halfspaces ... " << std::endl;
         std::vector<long> new_halfspaces = genhalfspaces(p, new_sky);
         std::vector<long> unique_new_halfspaces;
         for (const auto& hs : new_halfspaces) {
@@ -56,20 +61,17 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
         }
 
         new_halfspaces = std::move(unique_new_halfspaces);
-        end = std::chrono::high_resolution_clock::now();
-        elapsed = end - start;
-        std::cout << "> building halfspaces time: " << elapsed.count() << " seconds.\n" << std::endl;
 
         start = std::chrono::high_resolution_clock::now();
         std::cout << "> " << new_halfspaces.size() << " halfspace(s) to insert" << std::endl;
         if (!new_halfspaces.empty()) {
             //qt.inserthalfspaces(new_halfspaces);
             qt.inserthalfspacesMacroSplit(new_halfspaces);
-            std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted" << std::endl;
+            end = std::chrono::high_resolution_clock::now();
+            elapsed = end - start;
+            std::cout << "> " << new_halfspaces.size() << " halfspace(s) have been inserted in " << elapsed.count() << " seconds." << std::endl;
         }
-        end = std::chrono::high_resolution_clock::now();
-        elapsed = end - start;
-        std::cout << "> inserting halfspaces time: " << elapsed.count() << " seconds.\n" << std::endl;
+
 
         auto new_leaves = qt.getAllLeaves();//qt.getLeaves();
         //std::cout << "> " << new_leaves.size() << " total leaves" << std::endl;
@@ -105,11 +107,11 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
             int hamweight = 0;
             while (hamweight <= leaf->halfspaces.size() && leaf_order + hamweight <= minorder && leaf_order + hamweight <= minorder_singular && hamweight <= limitHamWeight) {
-                // std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->halfspaces.size();
+                //std::cout << "Hamweight " << hamweight << ", numero hs: " << leaf->halfspaces.size();
                 std::vector<std::string> hamstrings = genhammingstrings(static_cast<int>(leaf->halfspaces.size()), hamweight);
-                // std::cout << ", Hamstring " << hamstrings.size();
+                //std::cout << ", Hamstring " << hamstrings.size();
                 std::vector<Cell> cells = searchmincells_lp(*leaf, hamstrings);
-                // std::cout << ", Celle " << cells.size() << std::endl;
+                //std::cout << ", Celle " << cells.size() << std::endl;
                 if (!cells.empty()) {
                     for (auto& cell : cells) {
                         cell.order = leaf_order + hamweight;
@@ -127,10 +129,9 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
                 hamweight++;
             }
         }
-        std::cout << "> Expansion " << n_exp << ": Found " << mincells.size() << " mincell(s)" << std::endl;
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
-        std::cout << "> expansion time: " << elapsed.count() << " seconds.\n" << std::endl;
+        std::cout << "> Expansion " << n_exp << ": Found " << mincells.size() << " mincell(s) in " << elapsed.count() << " seconds.\n" << std::endl;
 
         int new_singulars = 0;
         std::vector<std::shared_ptr<HalfSpace>> to_expand;
@@ -158,14 +159,28 @@ std::pair<int, std::vector<Cell>> aa_hd(const std::vector<Point>& data, const Po
 
         n_exp++;
         std::cout << "> Expansion " << n_exp << ": " << to_expand.size() << " halfspace(s) will be expanded" << std::endl;
-        for (const auto& hs : to_expand) {
-            hs->arr = Arrangement::SINGULAR;
-            auto it = std::find_if(incomp.begin(), incomp.end(), [&](const Point& pt) { return hs->pntID == pt.id; });
-            if (it != incomp.end()) {
-                incomp.erase(it);
-            }
 
+        for (auto &hs : to_expand) {
+            hs->arr = Arrangement::SINGULAR;
+
+            auto it = incompIDs.find(hs->pntID);
+            if (it != incompIDs.end()) {
+                // Rimuove dal set in O(1)
+                incompIDs.erase(it);
+            }
         }
+        std::vector<Point> new_incomp;
+        new_incomp.reserve(incompIDs.size());
+
+        // Copiamo soltanto i punti che sono ancora nel set:
+        for (auto &pt : incomp) {
+            if (incompIDs.count(pt.id) != 0) {
+                new_incomp.push_back(pt);
+            }
+        }
+        // Sovrascriviamo la versione vecchia di incomp:
+        incomp = std::move(new_incomp);
+
         std::tie(sky, leaves) = updateqt(sky);
     }
 }
