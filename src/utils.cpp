@@ -3,6 +3,7 @@
 #include <cstdlib>   // for exit(0)
 #include <cstring>   // for strtok
 #include <cmath>     // for std::ceil
+#include <filesystem>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -41,16 +42,23 @@ std::vector<std::string> readCombinations(const int& dims) {
         return comb; // Return empty
     }
 
-    // Map dimension to file name
+    // Recupera il path di *questo* file sorgente, così come è noto a compile-time.
+    std::filesystem::__cxx11::path thisSourceFile = std::filesystem::__cxx11::path(__FILE__);
+    // Ottiene la cartella che contiene il file sorgente.
+    std::filesystem::__cxx11::path thisSourceDir  = thisSourceFile.parent_path();
+    // A questo punto, “bin” è fisso rispetto alla cartella del file sorgente.
+    std::filesystem::__cxx11::path binDir         = thisSourceDir / "../bin";
+
+    // Costruisci l’array dei nomi di file nella cartella bin
     std::string FileName[] = {
-        "../bin/Comb2D.txt",
-        "../bin/Comb3D.txt",
-        "../bin/Comb4D.txt",
-        "../bin/Comb5D.txt",
-        "../bin/Comb6D.txt",
-        "../bin/Comb7D.txt",
-        "../bin/Comb8D.txt",
-        "../bin/Comb9D.txt"
+        (binDir / "Comb2D.txt").string(),
+        (binDir / "Comb3D.txt").string(),
+        (binDir / "Comb4D.txt").string(),
+        (binDir / "Comb5D.txt").string(),
+        (binDir / "Comb6D.txt").string(),
+        (binDir / "Comb7D.txt").string(),
+        (binDir / "Comb8D.txt").string(),
+        (binDir / "Comb9D.txt").string()
     };
     std::string fileToOpen = FileName[dims - 2];
 
