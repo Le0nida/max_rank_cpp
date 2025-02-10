@@ -63,101 +63,67 @@ bool Cell::issingular() const {
 /// -------------------------------------------------
 
 std::vector<std::string> genhammingstrings(int strlen, int weight) {
-    // Limit bitstring length
-    if (strlen > halfspacesLengthLimit) strlen = halfspacesLengthLimit;
+    // Se vuoi ancora mantenere un limite interno, usalo. Altrimenti rimuovi:
+    if (strlen > halfspacesLengthLimit) {
+        strlen = halfspacesLengthLimit;
+    }
 
-    // Decide top-down or bottom-up
-    bool botup;
-    if (weight > std::ceil(strlen / 2.0)) {
+    // Determina se invertire alla fine (top-down vs bottom-up)
+    bool invert = false;
+    if (weight > strlen / 2) {
         weight = strlen - weight;
-        botup = false;
-    } else {
-        botup = true;
+        invert = true;
     }
 
-    std::vector<int> decstr;
-    decstr.reserve(1 << strlen);
-
-    // Special cases for weight 0 or 1
+    // Se il peso è 0, c'è un'unica stringa di tutti zeri
     if (weight == 0) {
-        decstr.push_back(0);
+        return { std::string(strlen, '0') };
     }
-    else if (weight == 1) {
-        decstr.reserve(strlen);
-        for (int b = 0; b < strlen; ++b) {
-            decstr.push_back(1 << b);
-        }
+    // Se il peso è l'intera lunghezza, c'è un'unica stringa di tutti uni
+    if (weight == strlen) {
+        return { std::string(strlen, '1') };
     }
-    else {
-        int halfmax = (1 << (strlen - 1)) - 1;
-        int curr_weight = 2;
 
-        // Start with bit patterns of weight=2 in range
-        for (int b = 1; b < strlen; ++b) {
-            decstr.push_back((1 << b) + 1);
+    // Per generare le combinazioni, useremo un backtracking
+    std::vector<std::string> results;
+    results.reserve(1 << weight); // stima euristica di spazio (non obbligatoria)
+
+    // Stringa di lavoro inizialmente tutta a '0'
+    std::string bitpattern(strlen, '0');
+
+    // Funzione ricorsiva che piazza `left` bit a 1 partendo dall'indice `start`
+    std::function<void(int start, int left)> backtrack = [&](int start, int left) {
+        // Se non dobbiamo più piazzare 1, aggiungiamo la stringa
+        if (left == 0) {
+            results.push_back(bitpattern);
+            return;
         }
-        std::vector<int> bases = decstr;
-        bases.erase(std::remove_if(bases.begin(),
-                                   bases.end(),
-                                   [halfmax](int x) { return x > halfmax; }),
-                    bases.end());
+        // Se restano troppi pochi spazi per piazzare tutti gli 1, ci fermiamo
+        if (start + left > strlen) {
+            return;
+        }
+        // Possiamo tentare di piazzare un bit a 1 in tutti i modi possibili
+        for (int i = start; i <= strlen - left; ++i) {
+            bitpattern[i] = '1';
+            backtrack(i + 1, left - 1);
+            bitpattern[i] = '0'; // backtrack
+        }
+    };
 
-        // Expand until we reach the desired weight
-        while (true) {
-            // Expand horizontally
-            while (!bases.empty()) {
-                std::vector<int> shifts;
-                for (int base : bases) {
-                    int shifted = base << 1;
-                    if (shifted <= halfmax) {
-                        shifts.push_back(shifted);
-                    }
-                }
-                decstr.insert(decstr.end(), shifts.begin(), shifts.end());
-                bases = std::move(shifts);
-            }
+    // Genera tutte le stringhe di lunghezza `strlen` con esattamente `weight` bit a 1
+    backtrack(0, weight);
 
-            // Increase weight if needed
-            if (curr_weight < weight) {
-                std::vector<int> new_bases;
-                for (int dec : decstr) {
-                    int new_dec = (dec << 1) + 1;
-                    if (new_dec <= ((1 << strlen) - 1)) {
-                        new_bases.push_back(new_dec);
-                    }
-                }
-                decstr.insert(decstr.end(), new_bases.begin(), new_bases.end());
-                bases = std::move(new_bases);
-                curr_weight++;
-            } else {
-                break;
+    // Se in origine volevamo il caso "invertito" (top-down), invertiamo i bit
+    // (cioè trasformiamo 0 in 1 e viceversa)
+    if (invert) {
+        for (auto &str : results) {
+            for (auto &ch : str) {
+                ch = (ch == '0') ? '1' : '0';
             }
         }
     }
 
-    // Convert to actual bitstrings
-    std::vector<std::string> hamming_strings;
-    hamming_strings.reserve(decstr.size());
-    for (int dec : decstr) {
-        hamming_strings.emplace_back(
-            std::bitset<64>(dec).to_string().substr(64 - strlen)
-        );
-    }
-
-    // If top-down, invert bits
-    if (!botup) {
-        int decmax = (1 << strlen) - 1;
-        for (auto& hs : hamming_strings) {
-            int dec_val = static_cast<int>(
-                std::bitset<64>(hs).to_ulong()
-            );
-            hs = std::bitset<64>(decmax - dec_val)
-                    .to_string()
-                    .substr(64 - strlen);
-        }
-    }
-
-    return hamming_strings;
+    return results;
 }
 
 /// -------------------------------------------------
@@ -370,7 +336,7 @@ std::vector<Cell> searchmincells_lp(const QNode& leaf,
             cells.emplace_back(0, hamstr, leaf_covered,
                                halfspaces, leaf.mbr, feasible_pnt);
             // Break after first feasible
-            break;
+            return cells;
         }
     }
 
